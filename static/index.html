@@ -3,184 +3,141 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YouTube Video Clipper & AI Highlights</title>
+  <title>Clip Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #090a0f;
-      --card-bg: #12151f;
-      --card-border: #1e2436;
-      --accent: #6366f1;
-      --accent-hover: #4f46e5;
-      --accent-glow: rgba(99, 102, 241, 0.25);
-      --success: #10b981;
-      --warning: #f59e0b;
-      --danger: #ef4444;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --text-dim: #64748b;
+      --bench: #2c2d30;
+      --side: #252629;
+      --rail: #1f2022;
+      --field: #1a1b1d;
+      --raise: #3a3b3f;
+      --line: #414347;
+      --ink: #ececea;
+      --ink-2: #a6a8ac;
+      --ink-3: #7b7d82;
+      --tape: #f2c32b;
+      --tape-hover: #ffd34d;
+      --tape-ink: #1d1a10;
+      --tape-wash: rgba(242, 195, 43, 0.26);
+      --error: #ff7d6e;
+      --thumb: 8px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      background-color: var(--bg);
-      color: var(--text);
+      font-family: 'Archivo', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.45;
+      background: var(--bench);
+      color: var(--ink);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
     }
-    header {
-      background: rgba(18, 21, 31, 0.85);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--card-border);
-      padding: 1rem 2rem;
+
+    .topbar {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 50;
+      gap: 2rem;
+      padding: 0.75rem 1.25rem;
+      background: var(--rail);
+      border-bottom: 1px solid var(--line);
     }
-    .logo {
+    .wordmark {
+      font-size: 1.0625rem;
+      font-weight: 800;
+      font-stretch: 125%;
+      white-space: nowrap;
+    }
+    .source {
       display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      font-weight: 700;
-      font-size: 1.2rem;
-      letter-spacing: -0.02em;
-    }
-    .logo-icon {
-      width: 28px;
-      height: 28px;
-      background: linear-gradient(135deg, #ef4444, #6366f1);
-      border-radius: 8px;
-      display: grid;
-      place-items: center;
-    }
-    .badge {
-      font-size: 0.75rem;
-      background: var(--card-border);
-      color: var(--text-muted);
-      padding: 0.2rem 0.6rem;
-      border-radius: 9999px;
-      font-weight: 500;
-    }
-    main {
+      gap: 0.5rem;
       flex: 1;
-      padding: 2rem;
-      max-width: 1600px;
-      width: 100%;
-      margin: 0 auto;
+      max-width: 820px;
+    }
+    .source .field { flex: 1; }
+
+    .field {
+      font: inherit;
+      font-size: 0.9375rem;
+      min-width: 0;
+      background: var(--field);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      padding: 0.55rem 0.75rem;
+    }
+    .field::placeholder { color: var(--ink-3); }
+    .field:focus { outline: none; border-color: var(--tape); }
+    .field-sm { font-size: 0.875rem; padding: 0.45rem 0.65rem; }
+
+    .btn {
+      font: inherit;
+      font-size: 0.875rem;
+      font-weight: 600;
+      white-space: nowrap;
+      background: var(--raise);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      padding: 0.5rem 0.85rem;
+      cursor: pointer;
+    }
+    .btn:hover:not(:disabled) { background: #45474b; }
+    .btn:focus-visible { outline: 2px solid var(--tape); outline-offset: 2px; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary { background: var(--tape); border-color: var(--tape); color: var(--tape-ink); }
+    .btn-primary:hover:not(:disabled) { background: var(--tape-hover); }
+    .btn-sm { font-size: 0.8125rem; padding: 0.3rem 0.6rem; }
+
+    .workspace {
+      flex: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 420px;
+    }
+    .editor {
       display: flex;
       flex-direction: column;
-      gap: 1.5rem;
+      min-width: 0;
     }
-    .url-bar-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
-      padding: 1.25rem;
+    .clip-meta {
       display: flex;
+      align-items: baseline;
+      justify-content: space-between;
       gap: 1rem;
-      align-items: center;
-      box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.5);
+      padding: 0.75rem 1.25rem;
+      min-height: 2.9rem;
     }
-    .url-input {
-      flex: 1;
-      background: #0d1017;
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
-      padding: 0.85rem 1.25rem;
-      color: #fff;
-      font-size: 0.95rem;
-      font-family: inherit;
-      outline: none;
-      transition: all 0.2s;
+    .video-meta {
+      align-items: baseline;
+      gap: 0.75rem;
+      min-width: 0;
     }
-    .url-input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-glow);
-    }
-    .btn {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 10px;
-      padding: 0.85rem 1.5rem;
-      font-size: 0.95rem;
+    #videoTitleDisplay {
       font-weight: 600;
-      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #videoDurationDisplay {
+      color: var(--ink-3);
+      font-variant-numeric: tabular-nums;
+    }
+    .status-msg {
+      font-size: 0.8125rem;
+      color: var(--ink-2);
+      white-space: nowrap;
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
-      transition: all 0.2s;
+      gap: 0.4rem;
     }
-    .btn:hover:not(:disabled) {
-      background: var(--accent-hover);
-      transform: translateY(-1px);
-    }
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .btn-secondary {
-      background: #1e2436;
-      color: var(--text);
-    }
-    .btn-secondary:hover:not(:disabled) {
-      background: #283048;
-    }
-    .btn-success {
-      background: var(--success);
-    }
-    .btn-success:hover:not(:disabled) {
-      background: #059669;
-    }
-    .btn-sm {
-      padding: 0.45rem 0.85rem;
-      font-size: 0.82rem;
-      border-radius: 8px;
-    }
-    .editor-layout {
-      display: grid;
-      grid-template-columns: 1.25fr 0.95fr;
-      gap: 1.5rem;
-      min-height: 600px;
-    }
-    @media (max-width: 1024px) {
-      .editor-layout {
-        grid-template-columns: 1fr;
-      }
-    }
-    .panel {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-    .panel-header {
-      padding: 1rem 1.25rem;
-      border-bottom: 1px solid var(--card-border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: rgba(255, 255, 255, 0.02);
-    }
-    .panel-title {
-      font-size: 1rem;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
+
     .video-viewport {
       background: #000;
-      position: relative;
       aspect-ratio: 16 / 9;
+      max-height: 62vh;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -188,395 +145,374 @@
     video {
       width: 100%;
       height: 100%;
-      max-height: 500px;
       object-fit: contain;
       outline: none;
     }
     .placeholder-view {
-      color: var(--text-dim);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1rem;
-      text-align: center;
+      color: var(--ink-3);
       padding: 2rem;
+      text-align: center;
     }
-    .controls-wrapper {
-      padding: 1.25rem;
-      display: flex;
-      flex-direction: column;
-      gap: 1.25rem;
-      background: #0f121a;
-    }
-    .timeline-container {
+
+    .timeline {
       position: relative;
-      background: #181d2a;
-      border-radius: 8px;
-      height: 48px;
-      display: flex;
-      align-items: center;
-      padding: 0 10px;
+      height: 44px;
+      margin: 1rem 1.25rem 0;
       user-select: none;
     }
-    .timeline-track {
+    .timeline-lane {
       position: absolute;
-      left: 10px;
-      right: 10px;
-      height: 6px;
-      background: #2a334a;
-      border-radius: 3px;
+      top: 0;
+      bottom: 0;
+      left: calc(var(--thumb) / 2);
+      right: calc(var(--thumb) / 2);
+      background-color: var(--rail);
+      background-image: repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px 10%);
+      background-size: 100% 8px;
+      background-repeat: no-repeat;
+      background-position: bottom;
     }
     .timeline-range-fill {
       position: absolute;
-      height: 6px;
-      background: var(--accent);
-      border-radius: 3px;
-      pointer-events: none;
+      top: 0;
+      bottom: 0;
+      background: var(--tape-wash);
+      border-top: 2px solid var(--tape);
+      border-bottom: 2px solid var(--tape);
     }
     .playhead-marker {
       position: absolute;
-      top: 6px;
-      bottom: 6px;
+      top: -4px;
+      bottom: -4px;
       width: 2px;
-      background: #fff;
-      box-shadow: 0 0 8px #fff;
-      pointer-events: none;
-      z-index: 10;
-    }
-    .dual-slider {
-      position: absolute;
-      left: 10px;
-      right: 10px;
-      height: 48px;
-      pointer-events: none;
+      margin-left: -1px;
+      background: var(--ink);
     }
     .range-input {
       position: absolute;
-      left: 0;
-      right: 0;
-      top: 14px;
+      inset: 0;
       width: 100%;
-      background: none;
+      height: 100%;
+      background: transparent;
+      appearance: none;
       -webkit-appearance: none;
       pointer-events: none;
-      height: 20px;
     }
-    .range-input::-moz-range-thumb {
-      pointer-events: auto;
-    }
+    .range-input:focus { outline: none; }
+    .range-input::-webkit-slider-runnable-track { height: 44px; background: transparent; }
+    .range-input::-moz-range-track { background: transparent; }
     .range-input::-webkit-slider-thumb {
       -webkit-appearance: none;
       pointer-events: auto;
-      width: 14px;
-      height: 28px;
-      background: #fff;
-      border: 2px solid var(--accent);
-      border-radius: 4px;
+      width: var(--thumb);
+      height: 44px;
+      background: var(--tape);
+      border: 0;
       cursor: ew-resize;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
-      transition: background 0.15s;
     }
-    .range-input::-webkit-slider-thumb:hover {
-      background: var(--accent);
+    .range-input::-moz-range-thumb {
+      pointer-events: auto;
+      width: var(--thumb);
+      height: 44px;
+      background: var(--tape);
+      border: 0;
+      border-radius: 0;
+      cursor: ew-resize;
     }
-    .timecodes-row {
+    #startSlider::-webkit-slider-thumb { border-radius: 3px 0 0 3px; }
+    #startSlider::-moz-range-thumb { border-radius: 3px 0 0 3px; }
+    #endSlider::-webkit-slider-thumb { border-radius: 0 3px 3px 0; }
+    #endSlider::-moz-range-thumb { border-radius: 0 3px 3px 0; }
+    .range-input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--ink); outline-offset: 2px; }
+    .range-input:focus-visible::-moz-range-thumb { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+    .readout {
+      display: flex;
+      gap: 2.5rem;
+      padding: 1rem 1.25rem 0;
+    }
+    .readout-cell {
+      display: flex;
+      flex-direction: column;
+    }
+    .readout-label {
+      font-size: 0.8125rem;
+      color: var(--ink-3);
+    }
+    .timecode {
+      font-size: 2rem;
+      font-weight: 500;
+      font-stretch: 80%;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+    .timecode-length { color: var(--tape); }
+
+    .transport {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.9rem;
-      color: var(--text-muted);
-    }
-    .time-badge {
-      background: #1a202c;
-      padding: 0.4rem 0.75rem;
-      border-radius: 6px;
-      border: 1px solid var(--card-border);
-      color: #fff;
-      font-weight: 500;
-    }
-    .duration-pill {
-      background: rgba(99, 102, 241, 0.15);
-      border: 1px solid rgba(99, 102, 241, 0.4);
-      color: #818cf8;
-      font-weight: 600;
-      padding: 0.35rem 0.75rem;
-      border-radius: 9999px;
-      font-size: 0.85rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding: 1rem 1.25rem 1.25rem;
     }
     .button-group {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.6rem;
-      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .sidebar {
+      background: var(--side);
+      border-left: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
     .tabs-nav {
       display: flex;
-      border-bottom: 1px solid var(--card-border);
-      background: rgba(0, 0, 0, 0.2);
+      gap: 1.5rem;
+      padding: 0 1.25rem;
+      border-bottom: 1px solid var(--line);
     }
     .tab-btn {
-      flex: 1;
-      padding: 0.85rem;
-      background: transparent;
-      border: none;
-      color: var(--text-muted);
+      font: inherit;
+      font-size: 0.9375rem;
       font-weight: 600;
-      font-size: 0.9rem;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
+      background: none;
+      color: var(--ink-2);
+      border: 0;
       border-bottom: 2px solid transparent;
-      transition: all 0.2s;
+      margin-bottom: -1px;
+      padding: 0.85rem 0 0.7rem;
+      cursor: pointer;
     }
-    .tab-btn.active {
-      color: #fff;
-      border-bottom-color: var(--accent);
-      background: rgba(255, 255, 255, 0.03);
-    }
+    .tab-btn:hover { color: var(--ink); }
+    .tab-btn:focus-visible { outline: 2px solid var(--tape); outline-offset: 2px; }
+    .tab-btn.active { color: var(--ink); border-bottom-color: var(--tape); }
     .tab-content {
       flex: 1;
-      padding: 1.25rem;
+      min-height: 0;
       overflow-y: auto;
-      max-height: 520px;
       display: flex;
       flex-direction: column;
       gap: 1rem;
+      padding: 1rem 1.25rem;
     }
-    .highlight-card {
-      background: #161a26;
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
-      padding: 1rem;
+    .analyze-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .analyze-row .field { flex: 1; }
+    .hint {
+      font-size: 0.8125rem;
+      color: var(--ink-3);
+      margin-top: 0.4rem;
+    }
+
+    .highlight-list { display: flex; flex-direction: column; }
+    .highlight {
       display: flex;
       flex-direction: column;
-      gap: 0.6rem;
-      transition: all 0.2s;
+      gap: 0.35rem;
+      padding: 0.9rem 0;
+      border-top: 1px solid var(--line);
     }
-    .highlight-card:hover {
-      border-color: rgba(99, 102, 241, 0.5);
-      transform: translateY(-2px);
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
-    }
-    .card-top {
+    .highlight-head {
       display: flex;
-      align-items: center;
+      align-items: baseline;
       justify-content: space-between;
+      gap: 1rem;
     }
-    .card-title {
+    .highlight-title {
+      font-size: 1rem;
       font-weight: 600;
-      font-size: 0.95rem;
-      color: #fff;
+      line-height: 1.3;
     }
-    .score-badge {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.75rem;
-      background: rgba(16, 185, 129, 0.15);
-      color: #34d399;
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      padding: 0.2rem 0.5rem;
-      border-radius: 6px;
+    .highlight-score {
+      font-size: 0.8125rem;
+      color: var(--ink-2);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
-    .card-reason {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      line-height: 1.4;
+    .highlight-reason {
+      font-size: 0.875rem;
+      color: var(--ink-2);
     }
-    .card-footer {
+    .highlight-foot {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-top: 0.25rem;
+      margin-top: 0.2rem;
     }
-    .card-timestamps {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.8rem;
-      color: #818cf8;
-      background: #1f2537;
-      padding: 0.25rem 0.6rem;
-      border-radius: 5px;
+    .highlight-range {
+      font-size: 0.9375rem;
+      font-stretch: 87.5%;
+      font-variant-numeric: tabular-nums;
     }
+
+    .caption-list { display: flex; flex-direction: column; }
     .transcript-line {
+      font: inherit;
+      font-size: 0.9rem;
+      text-align: left;
       display: flex;
       gap: 0.85rem;
-      padding: 0.6rem 0.85rem;
-      border-radius: 8px;
+      width: calc(100% + 1rem);
+      margin: 0 -0.5rem;
+      padding: 0.45rem 0.5rem;
+      background: none;
+      color: var(--ink-2);
+      border: 0;
+      border-radius: 3px;
       cursor: pointer;
-      font-size: 0.88rem;
-      color: var(--text-muted);
-      transition: all 0.15s;
     }
-    .transcript-line:hover {
-      background: #1a2030;
-      color: #fff;
-    }
+    .transcript-line:hover { background: #303135; color: var(--ink); }
+    .transcript-line:focus-visible { outline: 2px solid var(--tape); outline-offset: -2px; color: var(--ink); }
     .transcript-time {
-      font-family: 'JetBrains Mono', monospace;
-      color: #818cf8;
-      font-size: 0.8rem;
-      min-width: 65px;
+      min-width: 4.5em;
+      color: var(--ink-3);
+      font-stretch: 87.5%;
+      font-variant-numeric: tabular-nums;
     }
-    .export-card {
-      margin-top: auto;
-      border-top: 1px solid var(--card-border);
-      padding: 1rem 1.25rem;
-      background: #0d1017;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+
+    .empty {
+      font-size: 0.875rem;
+      color: var(--ink-3);
+      padding: 1.5rem 0;
     }
-    .status-msg {
-      font-size: 0.85rem;
-      color: var(--text-dim);
-    }
-    .status-loading {
-      color: var(--warning);
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
+    .empty-error { color: var(--error); }
+
     .spinner {
-      width: 14px;
-      height: 14px;
-      border: 2px solid rgba(255,255,255,0.2);
-      border-top-color: #fff;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-top-color: var(--tape);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       display: inline-block;
+      vertical-align: -1px;
     }
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+    @media (prefers-reduced-motion: reduce) {
+      .spinner { animation-duration: 3s; }
+    }
+
+    @media (min-width: 1025px) {
+      body { height: 100vh; }
+      .workspace { min-height: 0; }
+      .editor { overflow-y: auto; }
+    }
+    @media (max-width: 1024px) {
+      .workspace { grid-template-columns: 1fr; }
+      .sidebar { border-left: 0; border-top: 1px solid var(--line); }
+      .tab-content { overflow-y: visible; }
+    }
+    @media (max-width: 640px) {
+      .topbar { flex-wrap: wrap; gap: 0.75rem; padding: 0.75rem 1rem; }
+      .source { flex-wrap: wrap; flex-basis: 100%; }
+      .source .field { flex-basis: 100%; }
+      .clip-meta, .readout, .transport, .tabs-nav, .tab-content { padding-left: 1rem; padding-right: 1rem; }
+      .timeline { margin-left: 1rem; margin-right: 1rem; }
+      .readout { gap: 1.5rem; }
+      .timecode { font-size: 1.5rem; }
+      .transport .btn-primary { flex-basis: 100%; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div class="logo">
-      <div class="logo-icon">✂</div>
-      <span>Clip Studio</span>
-      <span class="badge">pstack & poteto-mode</span>
-    </div>
-    <div id="videoMetaHeader" style="display: none; align-items: center; gap: 1rem;">
-      <span id="videoTitleDisplay" style="font-size: 0.9rem; color: var(--text-muted); max-width: 450px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></span>
-      <span id="videoDurationDisplay" class="badge">00:00</span>
+  <header class="topbar">
+    <span class="wordmark">Clip Studio</span>
+    <div class="source">
+      <input type="text" id="urlInput" class="field" placeholder="Paste a YouTube link" aria-label="YouTube link">
+      <button id="loadBtn" class="btn btn-primary">Load video</button>
+      <button id="fetchCcTopBtn" class="btn">Get captions</button>
     </div>
   </header>
 
-  <main>
-    <div class="url-bar-card">
-      <input type="text" id="urlInput" class="url-input" placeholder="Paste YouTube link (e.g. https://www.youtube.com/watch?v=...)">
-      <button id="loadBtn" class="btn">
-        <span>Load Video</span>
-      </button>
-      <button id="fetchCcTopBtn" class="btn btn-secondary">
-        <span>Fetch CC</span>
-      </button>
-    </div>
-
-    <div class="editor-layout">
-      <!-- Left: Video & Trimmer -->
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-title">
-            <span>Video Editor & Timeline</span>
-          </div>
-          <div id="loadStatus" class="status-msg">Ready</div>
+  <main class="workspace">
+    <section class="editor">
+      <div class="clip-meta">
+        <div id="videoMetaHeader" class="video-meta" style="display: none;">
+          <span id="videoTitleDisplay"></span>
+          <span id="videoDurationDisplay">00:00</span>
         </div>
+        <div id="loadStatus" class="status-msg">Ready</div>
+      </div>
 
-        <div class="video-viewport" id="viewport">
-          <div class="placeholder-view" id="placeholderView">
-            <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z"></path>
-            </svg>
-            <p>Paste a YouTube link above and click <strong>Load Video</strong> to start clipping.</p>
-          </div>
-          <video id="videoPlayer" controls style="display: none;"></video>
+      <div class="video-viewport" id="viewport">
+        <div class="placeholder-view" id="placeholderView">
+          <p>Paste a YouTube link above to start clipping.</p>
         </div>
+        <video id="videoPlayer" controls style="display: none;"></video>
+      </div>
 
-        <div class="controls-wrapper">
-          <div class="timeline-container" id="timelineContainer">
-            <div class="timeline-track"></div>
-            <div class="timeline-range-fill" id="rangeFill"></div>
-            <div class="playhead-marker" id="playheadMarker"></div>
-            <input type="range" id="startSlider" class="range-input" min="0" max="100" step="0.1" value="0">
-            <input type="range" id="endSlider" class="range-input" min="0" max="100" step="0.1" value="100">
-          </div>
-
-          <div class="timecodes-row">
-            <div>
-              <span style="color: var(--text-dim); margin-right: 4px;">Start:</span>
-              <span id="startTimeVal" class="time-badge">00:00:00.0</span>
-            </div>
-            <div class="duration-pill" id="clipDurationPill">Clip: 00:00s</div>
-            <div>
-              <span style="color: var(--text-dim); margin-right: 4px;">End:</span>
-              <span id="endTimeVal" class="time-badge">00:00:00.0</span>
-            </div>
-          </div>
-
-          <div class="button-group">
-            <button id="setStartBtn" class="btn btn-secondary btn-sm">Set Start [ (current)</button>
-            <button id="setEndBtn" class="btn btn-secondary btn-sm">Set End ] (current)</button>
-            <button id="stepBackBtn" class="btn btn-secondary btn-sm">-0.1s</button>
-            <button id="stepForwardBtn" class="btn btn-secondary btn-sm">+0.1s</button>
-            <button id="previewClipBtn" class="btn btn-secondary btn-sm">Preview Range</button>
-            <button id="resetRangeBtn" class="btn btn-secondary btn-sm">Reset</button>
-          </div>
+      <div class="timeline" id="timelineContainer">
+        <div class="timeline-lane">
+          <div class="timeline-range-fill" id="rangeFill"></div>
+          <div class="playhead-marker" id="playheadMarker"></div>
         </div>
+        <input type="range" id="startSlider" class="range-input" min="0" max="100" step="0.1" value="0" aria-label="In point">
+        <input type="range" id="endSlider" class="range-input" min="0" max="100" step="0.1" value="100" aria-label="Out point">
+      </div>
 
-        <div class="export-card">
-          <div>
-            <div style="font-weight: 600; font-size: 0.95rem;">Export Selection</div>
-            <div style="font-size: 0.8rem; color: var(--text-dim);">Frame-accurate cut rendered with FFmpeg</div>
-          </div>
-          <button id="exportBtn" class="btn btn-success" disabled>
-            <span>Cut & Download Clip</span>
-          </button>
+      <div class="readout">
+        <div class="readout-cell">
+          <span class="readout-label">In</span>
+          <span id="startTimeVal" class="timecode">00:00.0</span>
+        </div>
+        <div class="readout-cell">
+          <span class="readout-label">Out</span>
+          <span id="endTimeVal" class="timecode">00:00.0</span>
+        </div>
+        <div class="readout-cell">
+          <span class="readout-label">Length</span>
+          <span id="clipDurationPill" class="timecode timecode-length">00:00.0</span>
         </div>
       </div>
 
-      <!-- Right: AI Highlights & CC -->
-      <div class="panel">
-        <div class="tabs-nav">
-          <button class="tab-btn active" id="tabHighlightsBtn" onclick="switchTab('highlights')">
-            <span>✨ AI Highlights</span>
-          </button>
-          <button class="tab-btn" id="tabCaptionsBtn" onclick="switchTab('captions')">
-            <span>💬 Transcript (CC)</span>
-          </button>
+      <div class="transport">
+        <div class="button-group">
+          <button id="setStartBtn" class="btn" title="Move the in point to the playhead">Set in</button>
+          <button id="setEndBtn" class="btn" title="Move the out point to the playhead">Set out</button>
+          <button id="stepBackBtn" class="btn" aria-label="Step back 0.1 seconds">−0.1s</button>
+          <button id="stepForwardBtn" class="btn" aria-label="Step forward 0.1 seconds">+0.1s</button>
+          <button id="previewClipBtn" class="btn">Play range</button>
+          <button id="resetRangeBtn" class="btn">Reset</button>
+        </div>
+        <button id="exportBtn" class="btn btn-primary" disabled>Export clip</button>
+      </div>
+    </section>
+
+    <aside class="sidebar">
+      <div class="tabs-nav">
+        <button class="tab-btn active" id="tabHighlightsBtn" onclick="switchTab('highlights')">Highlights</button>
+        <button class="tab-btn" id="tabCaptionsBtn" onclick="switchTab('captions')">Transcript</button>
+      </div>
+
+      <div id="highlightsTab" class="tab-content">
+        <div>
+          <div class="analyze-row">
+            <input type="password" id="geminiApiKey" class="field field-sm" placeholder="Gemini API key (optional)" aria-label="Gemini API key">
+            <button id="aiAnalyzeBtn" class="btn btn-sm">Find highlights</button>
+          </div>
+          <p class="hint">Without a key, highlights come from a local heuristic over the transcript.</p>
         </div>
 
-        <div id="highlightsTab" class="tab-content">
-          <div style="display: flex; gap: 0.6rem; flex-direction: column; background: #0e121a; padding: 0.85rem; border-radius: 8px; border: 1px solid var(--card-border);">
-            <div style="display: flex; gap: 0.5rem;">
-              <input type="password" id="geminiApiKey" class="url-input" style="padding: 0.5rem 0.85rem; font-size: 0.85rem;" placeholder="Optional: Gemini API Key (uses smart local heuristic if empty)">
-              <button id="aiAnalyzeBtn" class="btn btn-sm">
-                <span>Find Highlights</span>
-              </button>
-            </div>
-            <div style="font-size: 0.75rem; color: var(--text-dim);">AI analyzes the transcript to surface the most engaging quotes, lessons, and moments.</div>
-          </div>
-
-          <div id="highlightsList" style="display: flex; flex-direction: column; gap: 0.85rem;">
-            <div style="color: var(--text-dim); font-size: 0.88rem; text-align: center; padding: 2rem;">
-              Click <strong>Fetch CC</strong> and <strong>Find Highlights</strong> to let AI detect key moments.
-            </div>
-          </div>
-        </div>
-
-        <div id="captionsTab" class="tab-content" style="display: none;">
-          <input type="text" id="searchCaptionsInput" class="url-input" style="padding: 0.6rem 0.85rem; font-size: 0.85rem;" placeholder="Search transcript...">
-          <div id="captionsList" style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <div style="color: var(--text-dim); font-size: 0.88rem; text-align: center; padding: 2rem;">
-              No captions loaded yet. Click <strong>Fetch CC</strong> above.
-            </div>
-          </div>
+        <div id="highlightsList" class="highlight-list">
+          <p class="empty">Load a video with captions to find its highlights.</p>
         </div>
       </div>
-    </div>
+
+      <div id="captionsTab" class="tab-content" style="display: none;">
+        <input type="text" id="searchCaptionsInput" class="field field-sm" placeholder="Search transcript" aria-label="Search transcript">
+        <div id="captionsList" class="caption-list">
+          <p class="empty">The transcript appears here after you load a video.</p>
+        </div>
+      </div>
+    </aside>
   </main>
 
   <script>
@@ -643,11 +579,11 @@
     async function loadVideo() {
       const url = urlInput.value.trim();
       if (!url) {
-        alert('Please enter a YouTube video URL');
+        alert('Paste a YouTube link first.');
         return;
       }
 
-      setStatus('Fetching video info...', true);
+      setStatus('Fetching video info…', true);
       loadBtn.disabled = true;
 
       try {
@@ -668,7 +604,7 @@
         document.getElementById('videoTitleDisplay').textContent = info.title;
         document.getElementById('videoDurationDisplay').textContent = formatTime(videoDuration);
 
-        setStatus('Preparing local video stream...', true);
+        setStatus('Downloading video…', true);
         const dlRes = await fetch('/api/download', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -722,7 +658,7 @@
       startTimeVal.textContent = formatTime(clipStart);
       endTimeVal.textContent = formatTime(clipEnd);
       const dur = Math.max(0, clipEnd - clipStart);
-      clipDurationPill.textContent = `Clip: ${formatTime(dur)}`;
+      clipDurationPill.textContent = formatTime(dur);
 
       const startPercent = (clipStart / videoDuration) * 100;
       const endPercent = (clipEnd / videoDuration) * 100;
@@ -797,7 +733,7 @@
       const url = urlInput.value.trim();
       if (!url && !currentVideoId) return;
 
-      setStatus('Fetching closed captions...', true);
+      setStatus('Fetching captions…', true);
       try {
         const res = await fetch('/api/captions', {
           method: 'POST',
@@ -814,21 +750,21 @@
         }
       } catch (err) {
         console.warn('Captions unavailable:', err);
-        captionsList.innerHTML = `<div style="color: var(--danger); text-align: center; padding: 1.5rem;">Could not load captions for this video.</div>`;
-        setStatus('Ready (no CC available)');
+        captionsList.innerHTML = `<p class="empty empty-error">Captions could not be loaded for this video. Highlights need captions.</p>`;
+        setStatus('No captions for this video');
       }
     }
 
     function renderCaptions(segments) {
       if (!segments || segments.length === 0) {
-        captionsList.innerHTML = `<div style="color: var(--text-dim); text-align: center; padding: 1.5rem;">No captions found.</div>`;
+        captionsList.innerHTML = `<p class="empty">No captions found.</p>`;
         return;
       }
       captionsList.innerHTML = segments.map((s, idx) => `
-        <div class="transcript-line" onclick="seekVideo(${s.start})">
+        <button class="transcript-line" onclick="seekVideo(${s.start})">
           <span class="transcript-time">${formatTime(s.start)}</span>
           <span>${escapeHtml(s.text)}</span>
-        </div>
+        </button>
       `).join('');
     }
 
@@ -845,12 +781,12 @@
 
     async function triggerAiHighlights() {
       if (!allCaptions || allCaptions.length === 0) {
-        alert('Please fetch captions first!');
+        alert('Highlights need captions. Load a video that has captions first.');
         return;
       }
 
-      setStatus('AI analyzing highlights...', true);
-      highlightsList.innerHTML = `<div style="text-align: center; padding: 2rem;"><span class="spinner"></span> Evaluating semantic density and key insights...</div>`;
+      setStatus('Finding highlights…', true);
+      highlightsList.innerHTML = `<p class="empty"><span class="spinner"></span> Reading the transcript…</p>`;
 
       try {
         const res = await fetch('/api/ai-highlights', {
@@ -863,35 +799,34 @@
         });
         if (!res.ok) throw new Error('AI analysis failed');
         const data = await res.json();
-        renderHighlights(data.highlights || []);
-        setStatus('AI highlights detected');
+        const highlights = data.highlights || [];
+        renderHighlights(highlights);
+        setStatus(`Found ${highlights.length} highlights`);
       } catch (err) {
         console.error(err);
-        highlightsList.innerHTML = `<div style="color: var(--danger); padding: 1rem;">Highlight detection failed: ${escapeHtml(err.message)}</div>`;
-        setStatus('AI Highlight error');
+        highlightsList.innerHTML = `<p class="empty empty-error">Could not find highlights: ${escapeHtml(err.message)}</p>`;
+        setStatus('Highlights failed');
       }
     }
 
     function renderHighlights(highlights) {
       if (!highlights || highlights.length === 0) {
-        highlightsList.innerHTML = `<div style="color: var(--text-dim); text-align: center; padding: 2rem;">No distinct highlights detected.</div>`;
+        highlightsList.innerHTML = `<p class="empty">No highlights found in this transcript.</p>`;
         return;
       }
 
       highlightsList.innerHTML = highlights.map(h => `
-        <div class="highlight-card">
-          <div class="card-top">
-            <span class="card-title">${escapeHtml(h.title)}</span>
-            <span class="score-badge">${Math.round(h.score * 100)}% match</span>
+        <article class="highlight">
+          <div class="highlight-head">
+            <h3 class="highlight-title">${escapeHtml(h.title)}</h3>
+            <span class="highlight-score" title="Highlight score">${Math.round(h.score * 100)}%</span>
           </div>
-          <p class="card-reason">${escapeHtml(h.reason)}</p>
-          <div class="card-footer">
-            <span class="card-timestamps">${formatTime(h.start)} - ${formatTime(h.end)}</span>
-            <button class="btn btn-sm btn-secondary" onclick="applyClipRange(${h.start}, ${h.end})">
-              Apply to Timeline ✂
-            </button>
+          <p class="highlight-reason">${escapeHtml(h.reason)}</p>
+          <div class="highlight-foot">
+            <span class="highlight-range">${formatTime(h.start)}–${formatTime(h.end)}</span>
+            <button class="btn btn-sm" onclick="applyClipRange(${h.start}, ${h.end})">Use this range</button>
           </div>
-        </div>
+        </article>
       `).join('');
     }
 
@@ -905,12 +840,12 @@
 
     async function exportClip() {
       if (!currentVideoId) {
-        alert('No video loaded');
+        alert('Load a video before exporting.');
         return;
       }
 
       exportBtn.disabled = true;
-      setStatus('Rendering clip with FFmpeg...', true);
+      setStatus('Exporting clip…', true);
 
       try {
         const res = await fetch('/api/clip', {
@@ -927,7 +862,7 @@
           throw new Error(err.detail || 'Export failed');
         }
         const data = await res.json();
-        setStatus('Clip ready!');
+        setStatus('Clip exported');
 
         const a = document.createElement('a');
         a.href = data.download_url;
@@ -937,7 +872,7 @@
         document.body.removeChild(a);
       } catch (err) {
         console.error(err);
-        setStatus('Export error: ' + err.message);
+        setStatus('Export failed: ' + err.message);
         alert(err.message);
       } finally {
         exportBtn.disabled = false;
