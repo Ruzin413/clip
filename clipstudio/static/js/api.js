@@ -78,6 +78,10 @@ export const createClip = (body) => sendJson('POST', '/api/clip', body, 'Export 
 /** @returns {Promise<Clip[]>} newest first */
 export const listClips = () => getJson('/api/clips', 'Could not load the clips');
 
+/** @param {string} clipId */
+export const deleteClip = (clipId) =>
+  sendJson('DELETE', `/api/clips/${encodeURIComponent(clipId)}`, null, 'Could not delete this clip');
+
 /** @returns {Promise<Pipeline[]>} */
 export const getPipelines = () => getJson('/api/pipelines', 'Could not load the pipelines');
 
@@ -89,3 +93,11 @@ export const createRun = (body) => sendJson('POST', '/api/runs', body, 'Could no
 
 /** @returns {Promise<Run[]>} newest first */
 export const listRuns = () => getJson('/api/runs', 'Could not load the runs');
+
+/** @param {string} runId */
+export const deleteRun = (runId) =>
+  sendJson('DELETE', `/api/runs/${encodeURIComponent(runId)}`, null, 'Could not delete this run');
+
+/** @returns {Promise<{status: string, count: number}>} */
+export const clearRuns = () =>
+  sendJson('DELETE', '/api/runs', null, 'Could not clear runs');

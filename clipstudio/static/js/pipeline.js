@@ -1,4 +1,4 @@
-import { createRun, getPipelines, listClips, listProviders, listRuns } from './api.js';
+import { clearRuns, createRun, deleteClip, deleteRun, getPipelines, listClips, listProviders, listRuns } from './api.js';
 import { aiChoiceFromPrefs } from './ai-prefs.js';
 import { escapeHtml, renderNav, showMessage } from './ui.js';
 import { clipCard, clipName, onSend, setSendStatus, showActiveRunCount } from './widgets.js';
@@ -16,6 +16,7 @@ const runsList = document.getElementById('runsList');
 const clipsList = document.getElementById('clipsList');
 const aiChoiceNote = document.getElementById('aiChoice');
 const pageError = document.getElementById('pageError');
+const clearRunsBtn = document.getElementById('clearRunsBtn');
 
 let pipelines = [];
 const clips = new Map();
@@ -53,10 +54,15 @@ function runHtml(run) {
   const input = clips.get(run.input_clip_id);
   const output = run.output_clip_id && clips.get(run.output_clip_id);
   const label = pipelines.find((p) => p.id === run.pipeline)?.label || run.pipeline;
+  const canDelete = run.status === 'done' || run.status === 'failed';
   return `
     <header class="run-head">
       <h2 class="run-title">${escapeHtml(label)}</h2>
-      <span class="run-status" data-status="${run.status}">${RUN_LABELS[run.status]}</span>
+      <div class="run-head-actions">
+        <span class="run-status" data-status="${run.status}">${RUN_LABELS[run.status]}</span>
+        ${canDelete ? `<button type="button" class="btn btn-sm btn-icon" data-action="delete-run"
+          data-run-id="${escapeHtml(run.run_id)}" title="Delete run" aria-label="Delete run">✕</button>` : ''}
+      </div>
     </header>
     <p class="run-input">From ${input ? escapeHtml(clipName(input)) : 'a clip'}</p>
     <ol class="run-steps">${run.steps.map(stepHtml).join('')}</ol>
@@ -71,9 +77,17 @@ function runHtml(run) {
 
 function renderKeyed(container, cards, items, keyOf, makeElement, htmlOf, emptyText) {
   if (items.length === 0) {
+    for (const card of cards.values()) card.el.remove();
     cards.clear();
     showMessage(container, emptyText);
     return;
+  }
+  const currentKeys = new Set(items.map(keyOf));
+  for (const [key, card] of cards.entries()) {
+    if (!currentKeys.has(key)) {
+      card.el.remove();
+      cards.delete(key);
+    }
   }
   container.querySelector(':scope > .empty')?.remove();
   items.forEach((item, index) => {
@@ -93,6 +107,9 @@ function renderKeyed(container, cards, items, keyOf, makeElement, htmlOf, emptyT
 }
 
 function renderRuns(runs) {
+  if (clearRunsBtn) {
+    clearRunsBtn.hidden = !runs.some((r) => r.status === 'done' || r.status === 'failed');
+  }
   renderKeyed(runsList, runCards, runs, (run) => run.run_id, (run) => {
     const el = document.createElement('article');
     el.className = 'run-card';
@@ -176,6 +193,54 @@ runsList.addEventListener('click', (e) => {
   const button = e.target.closest('[data-action="rerun"]');
   if (button) startRun(button.dataset.clipId, button.dataset.pipeline, button, button.nextElementSibling);
 });
+
+document.body.addEventListener('click', async (e) => {
+  const delClipBtn = e.target.closest('[data-action="delete-clip"]');
+  if (delClipBtn) {
+    const clipId = delClipBtn.dataset.clipId;
+    if (!confirm('Permanently delete this clip? This removes the video file from disk and cannot be undone.')) return;
+    delClipBtn.disabled = true;
+    try {
+      await deleteClip(clipId);
+      clips.delete(clipId);
+      await refreshClips();
+      await refresh();
+    } catch (err) {
+      showError(err.message);
+      delClipBtn.disabled = false;
+    }
+    return;
+  }
+
+  const delRunBtn = e.target.closest('[data-action="delete-run"]');
+  if (delRunBtn) {
+    const runId = delRunBtn.dataset.runId;
+    delRunBtn.disabled = true;
+    try {
+      await deleteRun(runId);
+      await refresh();
+    } catch (err) {
+      showError(err.message);
+      delRunBtn.disabled = false;
+    }
+    return;
+  }
+});
+
+if (clearRunsBtn) {
+  clearRunsBtn.addEventListener('click', async () => {
+    if (!confirm('Clear all finished runs?')) return;
+    clearRunsBtn.disabled = true;
+    try {
+      await clearRuns();
+      await refresh();
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      clearRunsBtn.disabled = false;
+    }
+  });
+}
 
 // Another tab may have exported or sent a clip while this one was not polling.
 document.addEventListener('visibilitychange', () => {

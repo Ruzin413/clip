@@ -55,6 +55,12 @@ class Library:
         clips = self._clips("WHERE clip_id = ?", (clip_id,))
         return clips[0] if clips else None
 
+    def delete_clip(self, clip_id: str) -> bool:
+        with closing(self._connect()) as db, db:
+            db.execute("UPDATE runs SET output_clip_id = NULL WHERE output_clip_id = ?", (clip_id,))
+            cursor = db.execute("DELETE FROM clips WHERE clip_id = ?", (clip_id,))
+            return cursor.rowcount > 0
+
     def list_clips(self) -> list[Clip]:
         return self._clips("ORDER BY created_at DESC, rowid DESC")
 
@@ -80,6 +86,20 @@ class Library:
     def get_run(self, run_id: str) -> Run | None:
         runs = self._runs("WHERE run_id = ?", (run_id,))
         return runs[0] if runs else None
+
+    def delete_run(self, run_id: str) -> bool:
+        with closing(self._connect()) as db, db:
+            cursor = db.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
+            return cursor.rowcount > 0
+
+    def clear_finished_runs(self) -> int:
+        finished_ids = [r.run_id for r in self.list_runs() if r.status in (RunStatus.DONE, RunStatus.FAILED)]
+        if not finished_ids:
+            return 0
+        with closing(self._connect()) as db, db:
+            placeholders = ", ".join("?" for _ in finished_ids)
+            cursor = db.execute(f"DELETE FROM runs WHERE run_id IN ({placeholders})", finished_ids)
+            return cursor.rowcount
 
     def list_runs(self) -> list[Run]:
         return self._runs("ORDER BY created_at DESC, rowid DESC")

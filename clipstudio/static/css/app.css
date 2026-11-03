@@ -119,6 +119,8 @@ select.field {
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-primary { background: var(--tape); border-color: var(--tape); color: var(--tape-ink); }
 .btn-primary:hover:not(:disabled) { background: var(--tape-hover); }
+.btn-danger { color: var(--error); border-color: rgba(255, 125, 110, 0.4); }
+.btn-danger:hover:not(:disabled) { background: rgba(255, 125, 110, 0.15); border-color: var(--error); }
 .btn-sm { font-size: 0.8125rem; padding: 0.3rem 0.6rem; }
 
 .check {

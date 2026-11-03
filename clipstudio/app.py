@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from . import clip_engine, highlights, hooks, pipelines
 from .library import Library
 from .models import (
-    AIChoice, AIProvider, CaptionSegment, Clip, ClipRequest, PipelineInfo, ProviderSettings, Run, VideoInfo,
+    AIChoice, AIProvider, CaptionSegment, Clip, ClipRequest, PipelineInfo, ProviderSettings, Run, RunStatus, VideoInfo,
 )
 from .settings_store import ProviderSettingsStore
 from .sources import SourceRef, UnsupportedSourceError, parse_source
@@ -200,6 +200,23 @@ def api_list_clips():
     return library.list_clips()
 
 
+@app.delete("/api/clips/{clip_id}")
+def api_delete_clip(clip_id: str):
+    clip = library.get_clip(clip_id)
+    if clip is None:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    active_runs = [
+        r for r in library.list_runs()
+        if r.input_clip_id == clip_id and r.status in (RunStatus.QUEUED, RunStatus.RUNNING)
+    ]
+    if active_runs:
+        raise HTTPException(status_code=400, detail="Cannot delete a clip that is currently in an active pipeline run.")
+    clip_file = CLIPS_DIR / clip.file_name
+    clip_file.unlink(missing_ok=True)
+    library.delete_clip(clip_id)
+    return {"status": "deleted", "clip_id": clip_id}
+
+
 @app.get("/api/pipelines", response_model=list[PipelineInfo])
 def api_list_pipelines():
     return [p.info() for p in pipelines.PIPELINES.values()]
@@ -238,12 +255,29 @@ def api_list_runs():
     return library.list_runs()
 
 
+@app.delete("/api/runs")
+def api_clear_runs():
+    count = library.clear_finished_runs()
+    return {"status": "cleared", "count": count}
+
+
 @app.get("/api/runs/{run_id}", response_model=Run)
 def api_get_run(run_id: str):
     run = library.get_run(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
+
+
+@app.delete("/api/runs/{run_id}")
+def api_delete_run(run_id: str):
+    run = library.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status in (RunStatus.QUEUED, RunStatus.RUNNING):
+        raise HTTPException(status_code=400, detail="Cannot delete an active run.")
+    library.delete_run(run_id)
+    return {"status": "deleted", "run_id": run_id}
 
 
 @app.get("/media/{filename}")

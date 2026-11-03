@@ -1,5 +1,7 @@
+import time
 from fastapi.testclient import TestClient
-from clipstudio.app import CLIPS_DIR, MEDIA_DIR, app
+from clipstudio.app import CLIPS_DIR, MEDIA_DIR, app, library
+from clipstudio.models import Clip, Run, StepRecord, StepState
 import subprocess
 from pathlib import Path
 
@@ -96,3 +98,78 @@ def test_clip_endpoint_with_synthetic_media():
         (CLIPS_DIR / data["file_name"]).unlink()
     finally:
         src.unlink(missing_ok=True)
+
+
+def test_delete_clip_removes_file_and_library_entry():
+    clip_id = "test_del_clip"
+    clip_file = CLIPS_DIR / f"{clip_id}_test.mp4"
+    clip_file.write_text("fake video data")
+    clip = Clip(
+        clip_id=clip_id,
+        video_id="youtube_test",
+        start_time=0.0,
+        end_time=5.0,
+        file_name=clip_file.name,
+        captions=[],
+        created_at=time.time(),
+    )
+    library.add_clip(clip)
+    assert library.get_clip(clip_id) is not None
+    assert clip_file.exists()
+
+    res = client.delete(f"/api/clips/{clip_id}")
+    assert res.status_code == 200
+    assert res.json() == {"status": "deleted", "clip_id": clip_id}
+    assert library.get_clip(clip_id) is None
+    assert not clip_file.exists()
+
+    # Deleting missing clip returns 404
+    missing_res = client.delete(f"/api/clips/{clip_id}")
+    assert missing_res.status_code == 404
+
+
+def test_delete_run_and_clear_runs():
+    done_run = Run(
+        run_id="run_done_1",
+        pipeline="test-pipeline",
+        input_clip_id="clip_1",
+        steps=[StepRecord(id="s1", label="Step 1", state=StepState.DONE)],
+        created_at=time.time(),
+    )
+    active_run = Run(
+        run_id="run_active_1",
+        pipeline="test-pipeline",
+        input_clip_id="clip_1",
+        steps=[StepRecord(id="s1", label="Step 1", state=StepState.RUNNING)],
+        created_at=time.time(),
+    )
+    library.add_run(done_run)
+    library.add_run(active_run)
+
+    # Cannot delete active run
+    active_del = client.delete(f"/api/runs/{active_run.run_id}")
+    assert active_del.status_code == 400
+
+    # Delete single finished run
+    del_res = client.delete(f"/api/runs/{done_run.run_id}")
+    assert del_res.status_code == 200
+    assert library.get_run(done_run.run_id) is None
+
+    # Deleting missing run returns 404
+    assert client.delete(f"/api/runs/{done_run.run_id}").status_code == 404
+
+    # Add another finished run and test clear_runs
+    failed_run = Run(
+        run_id="run_failed_1",
+        pipeline="test-pipeline",
+        input_clip_id="clip_1",
+        steps=[StepRecord(id="s1", label="Step 1", state=StepState.FAILED)],
+        created_at=time.time(),
+    )
+    library.add_run(failed_run)
+
+    clear_res = client.delete("/api/runs")
+    assert clear_res.status_code == 200
+    assert clear_res.json()["status"] == "cleared"
+    assert library.get_run(failed_run.run_id) is None
+    assert library.get_run(active_run.run_id) is not None
