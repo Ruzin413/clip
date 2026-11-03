@@ -14,6 +14,7 @@
 <body>
   <header class="topbar">
     <span class="wordmark">Clip Studio</span>
+    <nav class="pages" data-nav aria-label="Pages"></nav>
     <div class="source">
       <input type="text" id="urlInput" class="field" placeholder="Paste a YouTube, Twitch or Kick link" aria-label="Video link">
       <button id="loadBtn" class="btn btn-primary">Load video</button>
@@ -74,6 +75,12 @@
           <button id="resetRangeBtn" class="btn">Reset</button>
         </div>
         <div class="export-group">
+          <label class="send-to">
+            <span class="field-label">Then send to</span>
+            <select id="sendToSelect" class="field field-sm">
+              <option value="">Nothing, just download</option>
+            </select>
+          </label>
           <button id="exportBtn" class="btn btn-primary" disabled>Export clip</button>
         </div>
       </div>

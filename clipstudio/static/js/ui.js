@@ -1,7 +1,44 @@
+/** One row per page. Every page renders its nav from this list. */
+export const PAGES = [
+  { label: 'Editor', href: '/' },
+  { label: 'Pipeline', href: '/pipeline.html' },
+];
+
+export function renderNav() {
+  const here = location.pathname.replace(/\/index\.html$/, '/');
+  for (const mount of document.querySelectorAll('[data-nav]')) {
+    mount.replaceChildren(...PAGES.map(({ label, href }) => {
+      const link = document.createElement('a');
+      link.href = href;
+      link.textContent = label;
+      if (href === here) link.setAttribute('aria-current', 'page');
+      return link;
+    }));
+  }
+}
+
+export function setNavCount(href, count, title) {
+  for (const link of document.querySelectorAll(`[data-nav] a[href="${href}"]`)) {
+    let badge = link.querySelector('.nav-count');
+    if (!count) {
+      badge?.remove();
+      continue;
+    }
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'nav-count';
+      link.append(badge);
+    }
+    badge.textContent = count;
+    badge.title = title;
+  }
+}
+
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+/** Safe in text and in quoted attribute values. */
 export function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  return String(text).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
 export function formatTime(seconds) {

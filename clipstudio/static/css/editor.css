@@ -230,6 +230,13 @@
   gap: 1rem;
   flex-wrap: wrap;
 }
+.send-to {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.send-to .field { min-width: 0; }
 .ai-answered {
   font-size: 0.8125rem;
   color: var(--ink-2);
@@ -319,4 +326,7 @@
   .readout { gap: 1.5rem; }
   .timecode { font-size: 1.5rem; }
   .transport .btn-primary { flex-basis: 100%; }
+  .export-group { flex-basis: 100%; }
+  .send-to { flex: 1 1 100%; }
+  .send-to .field { flex: 1; }
 }

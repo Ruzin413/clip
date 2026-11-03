@@ -16,3 +16,12 @@ export function saveAiPrefs(prefs) {
     localStorage.setItem(AI_PREFS_KEY, JSON.stringify(prefs));
   } catch {}
 }
+
+/** The AI choice for a run sent from outside the editor's AI panel. Saved keys stay on the server and apply there. */
+export function aiChoiceFromPrefs(prefs = readAiPrefs()) {
+  const provider = prefs.provider || 'auto';
+  const choice = { provider };
+  if (prefs.models[provider]) choice.model = prefs.models[provider];
+  if (prefs.baseUrls[provider]) choice.base_url = prefs.baseUrls[provider];
+  return choice;
+}

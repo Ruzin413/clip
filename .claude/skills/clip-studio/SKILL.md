@@ -16,13 +16,16 @@ App code lives in the `clipstudio/` package, tests in `tests/`, and runtime data
 - `pipelines.py` holds `PIPELINES`, the only place that knows which post-processing pipelines exist, and `execute`, which runs a run's steps in order. A step takes a `StepContext` and returns its detail line or raises. The output is written to a temp path in `storage/clips` and renamed into place, then added to the library as a new clip.
 - `library.py` keeps exported clips and pipeline runs in the same SQLite file as the settings. A clip keeps its source-video times and only the subtitle lines `hooks.hook_window` needs, so any pipeline can run on any clip, including one a run made. Opening the library fails any run a previous process left queued or running.
 - `settings_store.py` keeps remembered keys, models and base URLs in `storage/clip_studio.db`.
-- `app.py` holds the HTTP routes and the single pipeline worker, so one ffmpeg runs at a time. `models.py` holds the shared shapes. A run's `status` is derived from its steps, never stored. The frontend is static files with no build step. `clipstudio/static/index.html` is markup only. `css/app.css` holds the design tokens and shared components, `css/editor.css` the editor-only rules. `js/editor.js` is the page's ES module entry point. It calls the server only through `js/api.js`, and shared helpers live in `js/ui.js` and `js/ai-prefs.js`.
+- `app.py` holds the HTTP routes and the single pipeline worker, so one ffmpeg runs at a time. `models.py` holds the shared shapes. A run's `status` is derived from its steps, never stored. The frontend in `clipstudio/static/` is static files with no build step. Two pages: the editor (`index.html`, entry `js/editor.js`) and the Pipeline page (`pipeline.html`, entry `js/pipeline.js`), which tracks runs and lists the clip library.
+  - Each page's HTML is markup only: no `<style>`, no `style=`, no inline script, no `on*=` handlers. `tests/test_static.py` enforces this.
+  - `css/app.css` holds the design tokens and shared components. `css/<page>.css` holds rules only one page uses.
+  - `js/api.js` holds one function per endpoint. `js/ui.js` holds `PAGES`, which renders the nav into each page's `<nav data-nav>`, plus the formatting helpers. `js/ai-prefs.js` reads the editor's remembered AI choice. `js/widgets.js` renders the clip card and the "Send to" control, once for every page.
 
 ## Run and test
 
 - Run: `./start.sh`. It installs `pyproject.toml` into `.venv` and serves `clipstudio.app:app` on http://localhost:8000.
 - Test: `uv pip install --python .venv/bin/python pytest`, then `.venv/bin/python -m pytest -q`. `tests/conftest.py` points `CLIP_STUDIO_DB` at a temp file, so tests never touch saved keys.
-- A change to the page or a route is not done until you drive the real page in a browser against the real server: load a link, trim, export, and probe the clip with `ffprobe`.
+- A change to a page or a route is not done until you drive the real page in a browser against the real server: load a link, trim, export, and probe the clip with `ffprobe`. For pipelines, export with "Then send to" and watch the run finish on the Pipeline page.
 
 ## Rules
 
@@ -35,6 +38,7 @@ App code lives in the `clipstudio/` package, tests in `tests/`, and runtime data
 - Validate a link or media key once, in `app.py`, and trust it everywhere else.
 - Add a dependency to `pyproject.toml`, never only to `start.sh`.
 - Inside `clipstudio/`, import siblings relatively (`from .models import ...`). Tests import `clipstudio.<module>`.
+- A new page is a `PAGES` row plus `<name>.html` and `js/<name>.js`, and pages call the API only through `js/api.js`. A widget two pages show is one render function in `js/widgets.js`.
 
 ## Gotchas
 

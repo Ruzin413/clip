@@ -1,0 +1,140 @@
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem var(--gutter) 1.25rem;
+  min-width: 0;
+  min-height: 0;
+}
+.pane-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+.pane-head .hint { margin-top: 0; }
+.pane-title {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+.pane-error {
+  font-size: 0.875rem;
+  color: var(--error);
+}
+
+.run-list,
+.clip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.clip-list > * + * {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.run-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem;
+  scroll-margin-top: 1rem;
+}
+.run-card.is-target {
+  border-color: var(--tape);
+  box-shadow: 0 0 0 1px var(--tape);
+}
+.run-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.run-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.run-status {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.run-status[data-status="running"] { color: var(--tape); }
+.run-status[data-status="done"] { color: var(--ink); }
+.run-status[data-status="failed"] { color: var(--error); }
+.run-input {
+  font-size: 0.875rem;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.run-steps {
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+.run-step {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr) auto;
+  column-gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.step-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.run-step[data-state="running"] .step-state { color: var(--tape); }
+.run-step[data-state="done"] .step-state { color: var(--ink); }
+.run-step[data-state="failed"] .step-state { color: var(--error); }
+.run-step[data-state="queued"] .step-label,
+.run-step[data-state="skipped"] .step-label { color: var(--ink-3); }
+.step-time {
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.step-detail {
+  grid-column: 2 / -1;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 8.5em;
+  overflow-y: auto;
+}
+.run-step[data-state="failed"] .step-detail { color: var(--error); }
+
+.run-card .clip-card {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.run-card .clip-preview { width: min(100%, 360px); }
+.run-card .clip-card-body { flex: 1 1 220px; }
+.run-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (min-width: 1025px) {
+  .runs-pane { overflow-y: auto; }
+  .clips-pane { flex: 1; overflow-y: auto; }
+}
+@media (max-width: 640px) {
+  .run-step { grid-template-columns: 5.25rem minmax(0, 1fr) auto; column-gap: 0.5rem; }
+}

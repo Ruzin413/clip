@@ -1,9 +1,10 @@
 import {
-  createClip, findHighlights, forgetProviderSettings, getCaptions, getVideoInfo, downloadVideo, listProviders,
-  saveProviderSettings,
+  createClip, createRun, findHighlights, forgetProviderSettings, getCaptions, getPipelines, getVideoInfo,
+  downloadVideo, listProviders, listRuns, saveProviderSettings,
 } from './api.js';
 import { readAiPrefs, saveAiPrefs } from './ai-prefs.js';
-import { countOf, escapeHtml, formatTime, showMessage } from './ui.js';
+import { countOf, escapeHtml, formatTime, renderNav, showMessage } from './ui.js';
+import { pipelineOptions, showActiveRunCount, trackRunUrl } from './widgets.js';
 
 let currentVideoId = null;
 let videoDuration = 0;
@@ -46,6 +47,7 @@ const aiRememberInput = document.getElementById('aiRememberInput');
 const aiForgetBtn = document.getElementById('aiForgetBtn');
 const aiAnswered = document.getElementById('aiAnswered');
 const loadError = document.getElementById('loadError');
+const sendToSelect = document.getElementById('sendToSelect');
 
 const PLATFORM_LABELS = { youtube: 'YouTube', twitch: 'Twitch', kick: 'Kick' };
 const NO_SUBTITLES = 'This video has no subtitles, so the AI cannot search it. You can still trim the range by hand.';
@@ -53,6 +55,9 @@ const NO_SUBTITLES = 'This video has no subtitles, so the AI cannot search it. Y
 let aiProviders = new Map();
 let aiAuto = null;
 let aiPrefs = readAiPrefs();
+let pipelines = [];
+let runCountTimer = null;
+let runCountRound = 0;
 
 function switchTab(tab) {
   for (const panel of document.querySelectorAll('[data-tab-panel]')) panel.hidden = panel.dataset.tabPanel !== tab;
@@ -91,7 +96,7 @@ async function loadVideo() {
     videoDuration = info.duration || 100;
     allCaptions = [];
     aiAnswered.hidden = true;
-    updateFindMomentsButton();
+    updateCaptionControls();
 
     document.getElementById('videoMetaHeader').hidden = false;
     document.getElementById('videoTitleDisplay').textContent = info.title;
@@ -225,7 +230,7 @@ async function fetchCaptions() {
   try {
     const data = await getCaptions(url);
     allCaptions = data.captions || [];
-    updateFindMomentsButton();
+    updateCaptionControls();
     if (allCaptions.length === 0) {
       showMessage(captionsList, NO_SUBTITLES);
       showMessage(highlightsList, NO_SUBTITLES);
@@ -238,7 +243,7 @@ async function fetchCaptions() {
   } catch (err) {
     console.warn('Subtitles unavailable:', err);
     allCaptions = [];
-    updateFindMomentsButton();
+    updateCaptionControls();
     showMessage(captionsList, `Subtitles could not be loaded. ${err.message}`, true);
     showMessage(highlightsList, 'Finding moments needs subtitles. You can still trim the range by hand.');
     setStatus('Subtitles failed');
@@ -295,7 +300,7 @@ async function triggerAiHighlights() {
     showMessage(highlightsList, err.message, true);
     setStatus('Finding moments failed');
   } finally {
-    updateFindMomentsButton();
+    updateCaptionControls();
   }
 }
 
@@ -314,8 +319,32 @@ function aiRequestBody() {
   return body;
 }
 
-function updateFindMomentsButton() {
+function updateCaptionControls() {
   aiAnalyzeBtn.disabled = allCaptions.length === 0;
+  const chosen = sendToSelect.value;
+  sendToSelect.innerHTML = '<option value="">Nothing, just download</option>'
+    + pipelineOptions(pipelines, allCaptions.length > 0);
+  const stillOpen = [...sendToSelect.options].some((o) => o.value === chosen && !o.disabled);
+  sendToSelect.value = stillOpen ? chosen : '';
+}
+
+async function loadPipelines() {
+  try {
+    pipelines = await getPipelines();
+  } catch (err) {
+    console.warn(err);
+  }
+  updateCaptionControls();
+}
+
+async function watchRunCount() {
+  clearTimeout(runCountTimer);
+  const round = ++runCountRound;
+  try {
+    if (showActiveRunCount(await listRuns()) && round === runCountRound) runCountTimer = setTimeout(watchRunCount, 2000);
+  } catch (err) {
+    console.warn(err);
+  }
 }
 
 function providerLabel(id) {
@@ -394,7 +423,7 @@ function renderAiHint() {
     aiProviderHint.textContent = `Automatic uses ${providerLabel(aiAuto)} with the server's settings.`;
   } else if (p?.accepts_key) {
     aiProviderHint.textContent = aiRememberInput.checked
-      ? 'Saved on this computer when you choose Find moments, so you only enter it once.'
+      ? 'Saved on this computer when you use it, so you only enter it once.'
       : 'Sent with this request only, never saved.';
   } else if (p) {
     aiProviderHint.textContent = '';
@@ -462,27 +491,59 @@ async function exportClip() {
     return;
   }
 
+  const pipeline = pipelines.find((p) => p.id === sendToSelect.value);
   exportBtn.disabled = true;
   const body = { video_id: currentVideoId, start_time: clipStart, end_time: clipEnd, captions: allCaptions };
   setStatus('Exporting clip…', true);
 
+  let clip;
   try {
-    const data = await createClip(body);
-    setStatus('Clip exported');
-
-    const a = document.createElement('a');
-    a.href = data.download_url;
-    a.download = data.file_name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    clip = await createClip(body);
   } catch (err) {
     console.error(err);
     setStatus('Export failed: ' + err.message);
     alert(err.message);
+    exportBtn.disabled = false;
+    return;
+  }
+
+  try {
+    if (pipeline) {
+      await sendToPipeline(clip, pipeline);
+    } else {
+      setStatus('Clip exported');
+      downloadClip(clip);
+    }
   } finally {
     exportBtn.disabled = false;
   }
+}
+
+async function sendToPipeline(clip, pipeline) {
+  setStatus(`Sending to ${pipeline.label}…`, true);
+  try {
+    await rememberAiSettings();
+    const { captions, query, ...ai } = aiRequestBody();
+    const run = await createRun({ clip_id: clip.clip_id, pipeline: pipeline.id, ai });
+    const link = document.createElement('a');
+    link.href = trackRunUrl(run.run_id);
+    link.textContent = 'Track it';
+    loadStatus.replaceChildren(`Sent to ${pipeline.label}.`, link);
+    watchRunCount();
+  } catch (err) {
+    console.error(err);
+    setStatus('Clip saved, but not sent');
+    alert(`The clip was saved, but it was not sent to ${pipeline.label}. ${err.message}`);
+  }
+}
+
+function downloadClip(clip) {
+  const a = document.createElement('a');
+  a.href = clip.download_url;
+  a.download = clip.file_name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 function showLoadError(text) {
@@ -500,4 +561,7 @@ urlInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') loadVideo();
 });
 
+renderNav();
 loadAiProviders();
+loadPipelines();
+watchRunCount();

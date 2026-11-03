@@ -63,3 +63,29 @@ export const findHighlights = (body) => sendJson('POST', '/api/ai-highlights', b
 
 /** @returns {Promise<Clip>} */
 export const createClip = (body) => sendJson('POST', '/api/clip', body, 'Export failed');
+
+/**
+ * @typedef {'queued'|'running'|'done'|'failed'|'skipped'} StepState
+ * @typedef {{id: string, label: string, state: StepState, started_at: number|null, finished_at: number|null,
+ *   detail: string|null}} StepRecord
+ * @typedef {{run_id: string, pipeline: string, input_clip_id: string, steps: StepRecord[],
+ *   output_clip_id: string|null, created_at: number, status: 'queued'|'running'|'done'|'failed'}} Run
+ * @typedef {{id: string, label: string, description: string, steps: {id: string, label: string}[],
+ *   needs_captions: boolean}} Pipeline
+ * @typedef {{provider: string, api_key?: string, model?: string, base_url?: string}} AIChoice
+ */
+
+/** @returns {Promise<Clip[]>} newest first */
+export const listClips = () => getJson('/api/clips', 'Could not load the clips');
+
+/** @returns {Promise<Pipeline[]>} */
+export const getPipelines = () => getJson('/api/pipelines', 'Could not load the pipelines');
+
+/**
+ * @param {{clip_id: string, pipeline: string, ai: AIChoice}} body
+ * @returns {Promise<Run>}
+ */
+export const createRun = (body) => sendJson('POST', '/api/runs', body, 'Could not send the clip');
+
+/** @returns {Promise<Run[]>} newest first */
+export const listRuns = () => getJson('/api/runs', 'Could not load the runs');

@@ -47,6 +47,36 @@ body {
   white-space: nowrap;
 }
 
+.pages {
+  display: flex;
+  gap: 1.25rem;
+}
+.pages a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  padding: 0.2rem 0;
+}
+.pages a:hover { color: var(--ink); }
+.pages a:focus-visible { outline: 2px solid var(--tape); outline-offset: 2px; }
+.pages a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--tape); }
+.nav-count {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  background: var(--tape);
+  color: var(--tape-ink);
+  border-radius: 999px;
+  padding: 0.2rem 0.45rem;
+}
+
 .field {
   font: inherit;
   font-size: 0.9375rem;
@@ -81,6 +111,8 @@ select.field {
   border-radius: var(--radius);
   padding: 0.5rem 0.85rem;
   cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
 }
 .btn:hover:not(:disabled) { background: var(--raise-hover); }
 .btn:focus-visible { outline: 2px solid var(--tape); outline-offset: 2px; }
@@ -121,11 +153,13 @@ select.field {
   align-items: center;
   gap: 0.4rem;
 }
+.status-msg a { color: var(--tape); }
 .hint {
   font-size: 0.8125rem;
   color: var(--ink-3);
   margin-top: 0.4rem;
 }
+.hint a { color: var(--ink-2); }
 .load-error {
   font-size: 0.875rem;
   color: var(--error);
@@ -154,6 +188,64 @@ select.field {
 @media (prefers-reduced-motion: reduce) {
   .spinner { animation-duration: 3s; }
 }
+
+.clip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.clip-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--radius);
+}
+.clip-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.clip-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.clip-facts {
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.clip-hook {
+  font-size: 0.875rem;
+  color: var(--ink-2);
+}
+.clip-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+}
+.send-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.send-control .field { max-width: 100%; }
+.send-label {
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+}
+.send-status {
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+  flex-basis: 100%;
+}
+.send-status.is-error { color: var(--error); }
 
 @media (min-width: 1025px) {
   body { height: 100vh; }
