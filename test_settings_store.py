@@ -78,7 +78,7 @@ def test_openai_accepts_a_key_even_though_it_is_optional():
 def test_request_value_beats_saved_value_beats_env(monkeypatch):
     seen = {}
 
-    def fake_call(lines, query, api_key, model, base_url):
+    def fake_call(request, api_key, model, base_url):
         seen.update(api_key=api_key, model=model, base_url=base_url)
         return highlights.HighlightPlan(highlights=[
             highlights.LineSpan(start_line=0, end_line=0, title="t", reason="r", score=0.5)

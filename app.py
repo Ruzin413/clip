@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 import clip_engine
 import highlights
+import hooks
 from models import AIProvider, CaptionSegment, ClipRequest, ClipResponse, ProviderSettings, VideoInfo
 from settings_store import ProviderSettingsStore
 from sources import SourceRef, UnsupportedSourceError, parse_source
@@ -151,9 +152,28 @@ def api_create_clip(payload: ClipRequest):
     if not safe_name.endswith(".mp4"):
         safe_name += ".mp4"
 
+    hook_text = None
+    if payload.hook:
+        spec = payload.hook
+        try:
+            _, hook_text = hooks.write_hook(
+                spec.captions,
+                payload.start_time,
+                payload.end_time,
+                spec.provider,
+                api_key=spec.api_key or None,
+                model=spec.model or None,
+                base_url=spec.base_url or None,
+                saved=provider_settings.all(),
+            )
+        except highlights.ProviderConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except highlights.ProviderCallError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
     output_path = CLIPS_DIR / f"{clip_id}_{safe_name}"
     try:
-        clip_engine.cut_clip(str(source_path), payload.start_time, payload.end_time, str(output_path))
+        clip_engine.cut_clip(str(source_path), payload.start_time, payload.end_time, str(output_path), hook_text)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Clip cutting failed: {exc}")
 
@@ -161,7 +181,8 @@ def api_create_clip(payload: ClipRequest):
         clip_id=clip_id,
         file_path=str(output_path.resolve()),
         download_url=f"/downloads/{output_path.name}",
-        duration=round(payload.end_time - payload.start_time, 2)
+        duration=round(payload.end_time - payload.start_time, 2),
+        hook=hook_text,
     )
 
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 import anthropic
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from models import AIProvider, CaptionSegment, HighlightClip, HighlightPlan, LineSpan, ProviderInfo, ProviderSettings
 
@@ -171,14 +171,7 @@ def _candidate_windows(
     return windows
 
 
-def _local_plan(
-    lines: Sequence[TranscriptLine],
-    query: str | None,
-    api_key: str | None,
-    model: str | None,
-    base_url: str | None,
-    count: int = 4,
-) -> HighlightPlan:
+def _local_plan(lines: Sequence[TranscriptLine], query: str | None, count: int = 4) -> HighlightPlan:
     query_words = {w for w in _words(query or "") if w and w not in QUERY_STOPWORDS}
     candidates = _candidate_windows(lines, query_words)
     if not candidates:
@@ -218,21 +211,25 @@ def _local_plan(
     ])
 
 
-def _call_claude(
-    lines: Sequence[TranscriptLine],
-    query: str | None,
-    api_key: str | None,
-    model: str | None,
-    base_url: str | None,
-) -> HighlightPlan:
+@dataclass(frozen=True)
+class LLMRequest:
+    """One structured call: what to ask, the type the answer must parse into, and the non-AI fallback if any."""
+    system: str
+    prompt: str
+    output: type[BaseModel]
+    gemini_schema: dict
+    local: Callable[[], BaseModel] | None = None
+
+
+def _call_claude(request: LLMRequest, api_key: str | None, model: str | None, base_url: str | None) -> BaseModel:
     client = anthropic.Anthropic(api_key=api_key)
     try:
         response = client.beta.messages.parse(
             model=model,
             max_tokens=16000,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": build_user_prompt(lines, query)}],
-            output_format=HighlightPlan,
+            system=request.system,
+            messages=[{"role": "user", "content": request.prompt}],
+            output_format=request.output,
             output_config={"effort": "medium"},
             betas=[CLAUDE_FALLBACK_BETA],
             fallbacks="default",
@@ -243,11 +240,11 @@ def _call_claude(
         raise ProviderCallError(f"Claude request failed: {exc}") from exc
     except ValidationError as exc:
         # parse() validates text eagerly, so a refusal or truncation that left partial text lands here.
-        raise ProviderCallError("Claude stopped before returning a complete highlight plan.") from exc
+        raise ProviderCallError("Claude stopped before returning a complete answer.") from exc
     if response.stop_reason == "refusal":
         raise ProviderCallError("Claude declined to analyze this transcript.")
     if response.parsed_output is None:
-        raise ProviderCallError(f"Claude returned no highlight plan (stop reason {response.stop_reason}).")
+        raise ProviderCallError(f"Claude returned no answer (stop reason {response.stop_reason}).")
     return response.parsed_output
 
 
@@ -271,11 +268,11 @@ def _post_json(url: str, payload: dict, headers: dict[str, str], provider_label:
         raise ProviderCallError(f"{provider_label} sent a response that is not JSON.") from exc
 
 
-def _parse_plan(text: str, provider_label: str) -> HighlightPlan:
+def _parse_output(text: str, output: type[BaseModel], provider_label: str) -> BaseModel:
     try:
-        return HighlightPlan.model_validate_json(text)
+        return output.model_validate_json(text)
     except ValidationError as exc:
-        raise ProviderCallError(f"{provider_label} returned JSON that is not a highlight plan.") from exc
+        raise ProviderCallError(f"{provider_label} returned JSON in the wrong shape.") from exc
 
 
 GEMINI_RESPONSE_SCHEMA = {
@@ -300,19 +297,13 @@ GEMINI_RESPONSE_SCHEMA = {
 }
 
 
-def _call_gemini(
-    lines: Sequence[TranscriptLine],
-    query: str | None,
-    api_key: str | None,
-    model: str | None,
-    base_url: str | None,
-) -> HighlightPlan:
+def _call_gemini(request: LLMRequest, api_key: str | None, model: str | None, base_url: str | None) -> BaseModel:
     payload = {
-        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-        "contents": [{"role": "user", "parts": [{"text": build_user_prompt(lines, query)}]}],
+        "systemInstruction": {"parts": [{"text": request.system}]},
+        "contents": [{"role": "user", "parts": [{"text": request.prompt}]}],
         "generationConfig": {
             "responseMimeType": "application/json",
-            "responseSchema": GEMINI_RESPONSE_SCHEMA,
+            "responseSchema": request.gemini_schema,
         },
     }
     result = _post_json(
@@ -325,22 +316,16 @@ def _call_gemini(
         text = result["candidates"][0]["content"]["parts"][0]["text"]
     except (KeyError, IndexError, TypeError) as exc:
         reason = (result.get("promptFeedback") or {}).get("blockReason") or "no candidates"
-        raise ProviderCallError(f"Gemini returned no highlight plan ({reason}).") from exc
-    return _parse_plan(text, "Gemini")
+        raise ProviderCallError(f"Gemini returned no answer ({reason}).") from exc
+    return _parse_output(text, request.output, "Gemini")
 
 
-def _call_openai(
-    lines: Sequence[TranscriptLine],
-    query: str | None,
-    api_key: str | None,
-    model: str | None,
-    base_url: str | None,
-) -> HighlightPlan:
+def _call_openai(request: LLMRequest, api_key: str | None, model: str | None, base_url: str | None) -> BaseModel:
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_user_prompt(lines, query)},
+            {"role": "system", "content": request.system},
+            {"role": "user", "content": request.prompt},
         ],
         "response_format": {"type": "json_object"},
     }
@@ -352,12 +337,16 @@ def _call_openai(
         raise ProviderCallError("The OpenAI-compatible server returned no message.") from exc
     if not isinstance(text, str):
         raise ProviderCallError("The OpenAI-compatible server returned an empty message.")
-    return _parse_plan(text, "The OpenAI-compatible server")
+    return _parse_output(text, request.output, "The OpenAI-compatible server")
 
 
-ProviderCall = Callable[
-    [Sequence[TranscriptLine], str | None, str | None, str | None, str | None], HighlightPlan
-]
+def _call_local(request: LLMRequest, api_key: str | None, model: str | None, base_url: str | None) -> BaseModel:
+    if request.local is None:
+        raise ProviderConfigError("This needs an AI provider. Choose Claude, Gemini or an OpenAI-compatible server.")
+    return request.local()
+
+
+ProviderCall = Callable[[LLMRequest, str | None, str | None, str | None], BaseModel]
 
 
 @dataclass(frozen=True)
@@ -399,7 +388,7 @@ PROVIDERS: dict[AIProvider, ProviderSpec] = {
         base_url_env="OPENAI_BASE_URL",
         default_base_url=OPENAI_DEFAULT_BASE_URL,
     ),
-    AIProvider.LOCAL: ProviderSpec(label="Local keyword heuristic", call=_local_plan),
+    AIProvider.LOCAL: ProviderSpec(label="Local keyword heuristic", call=_call_local),
 }
 
 
@@ -469,6 +458,30 @@ def find_highlights(
     query: str | None = None,
     saved: SavedSettings = NO_SAVED,
 ) -> tuple[AIProvider, list[HighlightClip]]:
+    resolved, call = resolve_call(provider, api_key=api_key, model=model, base_url=base_url, saved=saved)
+    lines = build_transcript(captions)
+    if not lines:
+        return resolved, []
+    query = (query or "").strip() or None
+    plan = call(LLMRequest(
+        system=SYSTEM_PROMPT,
+        prompt=build_user_prompt(lines, query),
+        output=HighlightPlan,
+        gemini_schema=GEMINI_RESPONSE_SCHEMA,
+        local=lambda: _local_plan(lines, query),
+    ))
+    return resolved, plan_to_clips(plan, lines)
+
+
+def resolve_call(
+    provider: AIProvider,
+    *,
+    api_key: str | None,
+    model: str | None,
+    base_url: str | None,
+    saved: SavedSettings,
+) -> tuple[AIProvider, Callable[[LLMRequest], BaseModel]]:
+    """Pick the provider and its settings, failing early on a missing key or model."""
     resolved = resolve_provider(provider, saved)
     spec = PROVIDERS[resolved]
     server = _server_settings(resolved, saved)
@@ -484,9 +497,4 @@ def find_highlights(
             f"{spec.label} needs a model name. Enter one or set {spec.model_env} on the server."
         )
     chosen_base_url = (base_url or server.base_url or "").rstrip("/") or None
-
-    lines = build_transcript(captions)
-    if not lines:
-        return resolved, []
-    plan = spec.call(lines, (query or "").strip() or None, key, chosen_model, chosen_base_url)
-    return resolved, plan_to_clips(plan, lines)
+    return resolved, lambda request: spec.call(request, key, chosen_model, chosen_base_url)

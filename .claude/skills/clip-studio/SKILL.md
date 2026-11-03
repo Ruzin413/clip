@@ -10,6 +10,7 @@ description: Run, test and change Clip Studio, the FastAPI clipper for YouTube, 
 - `sources.py` turns a link into a `SourceRef`. Its pattern table is the only place that knows URL shapes. The media key `<platform>_<id>` names the cached file and is the `video_id` the page sees.
 - `clip_engine.py` handles media only: video info, download, subtitles and the ffmpeg cut.
 - `highlights.py` picks moments. The `PROVIDERS` table drives listing, Automatic and every provider call. Models return transcript line numbers, and `plan_to_clips` maps them to real caption times.
+- `hooks.py` writes the one-line context hook from the clip's subtitles plus the 3 lines before it. `check_grounded` rejects any name or number missing from those lines, and `cut_clip` draws the line over the first 2 seconds.
 - `settings_store.py` keeps remembered keys, models and base URLs in `storage/clip_studio.db`.
 - `app.py` holds the HTTP routes. `models.py` holds the shared shapes. `static/index.html` is the whole frontend.
 
@@ -23,6 +24,7 @@ description: Run, test and change Clip Studio, the FastAPI clipper for YouTube, 
 
 - Add a platform or an AI provider as one row in its table. Do not add if/else branches elsewhere.
 - Never let a model write seconds. Timestamps come only from caption boundaries.
+- A new AI task is an `LLMRequest` passed to `resolve_call`. Do not add per-provider code for it.
 - Never send a saved API key back to the browser. Report only `saved_key_hint`.
 - Validate a link or media key once, in `app.py`, and trust it everywhere else.
 
