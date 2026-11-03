@@ -1,8 +1,27 @@
+from enum import StrEnum
+
 from pydantic import BaseModel, Field, model_validator
+
+MEDIA_KEY_PATTERN = r"^(youtube|twitch|kick)_[A-Za-z0-9_-]+$"
+
+
+class Platform(StrEnum):
+    YOUTUBE = "youtube"
+    TWITCH = "twitch"
+    KICK = "kick"
+
+
+class AIProvider(StrEnum):
+    AUTO = "auto"
+    CLAUDE = "claude"
+    GEMINI = "gemini"
+    OPENAI = "openai"
+    LOCAL = "local"
 
 
 class VideoInfo(BaseModel):
     video_id: str
+    platform: Platform
     title: str
     duration: float = Field(ge=0.0)
     thumbnail: str
@@ -36,11 +55,34 @@ class HighlightClip(BaseModel):
         return self
 
 
+class LineSpan(BaseModel):
+    """A highlight as an AI model reports it: inclusive indices into the numbered transcript."""
+    start_line: int
+    end_line: int
+    title: str
+    reason: str
+    score: float
+
+
+class HighlightPlan(BaseModel):
+    highlights: list[LineSpan]
+
+
+class ProviderInfo(BaseModel):
+    id: AIProvider
+    label: str
+    has_server_key: bool
+    needs_key: bool
+    default_model: str | None = None
+    uses_base_url: bool = False
+    default_base_url: str | None = None
+
+
 class ClipRequest(BaseModel):
-    video_id: str
+    video_id: str = Field(pattern=MEDIA_KEY_PATTERN)
     start_time: float = Field(ge=0.0)
     end_time: float = Field(ge=0.0)
-    filename: str | None = None
+    filename: str | None = Field(default=None, pattern=r"^[\w.-]+$")
 
     @model_validator(mode="after")
     def validate_bounds(self) -> "ClipRequest":

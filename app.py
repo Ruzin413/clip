@@ -1,4 +1,3 @@
-import os
 import uuid
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
@@ -8,7 +7,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import clip_engine
-from models import CaptionSegment, ClipRequest, ClipResponse, HighlightClip, VideoInfo
+import highlights
+from models import AIProvider, CaptionSegment, ClipRequest, ClipResponse, VideoInfo
+from sources import SourceRef, UnsupportedSourceError, parse_source
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -35,98 +36,108 @@ class UrlRequest(BaseModel):
     url: str
 
 
-class CaptionsRequest(BaseModel):
-    url: str
-    video_id: str | None = None
-
-
 class HighlightsRequest(BaseModel):
     captions: list[CaptionSegment]
+    provider: AIProvider = AIProvider.AUTO
     api_key: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    query: str | None = None
+
+
+def _source(url: str) -> SourceRef:
+    try:
+        return parse_source(url)
+    except UnsupportedSourceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.post("/api/info", response_model=VideoInfo)
 def api_get_info(payload: UrlRequest):
+    source = _source(payload.url)
     try:
-        info = clip_engine.get_video_info(payload.url)
-        cached_file = MEDIA_DIR / f"{info.video_id}.mp4"
-        if cached_file.exists():
-            info.local_path = f"/media/{info.video_id}.mp4"
-        return info
+        info = clip_engine.get_video_info(source)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=502, detail=f"Could not read video info: {exc}")
+    if (MEDIA_DIR / f"{source.media_key}.mp4").exists():
+        info.local_path = f"/media/{source.media_key}.mp4"
+    return info
 
 
 @app.post("/api/download")
 def api_download_video(payload: UrlRequest):
-    try:
-        video_id = clip_engine.extract_video_id(payload.url)
-        cached_file = MEDIA_DIR / f"{video_id}.mp4"
-        if not cached_file.exists():
-            file_path = clip_engine.download_video(payload.url, MEDIA_DIR)
-        else:
-            file_path = str(cached_file.resolve())
-
-        return {
-            "video_id": video_id,
-            "stream_url": f"/media/{video_id}.mp4",
-            "status": "ready"
-        }
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Download failed: {exc}")
+    source = _source(payload.url)
+    if not (MEDIA_DIR / f"{source.media_key}.mp4").exists():
+        try:
+            clip_engine.download_video(source, MEDIA_DIR)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Download failed: {exc}")
+    return {
+        "video_id": source.media_key,
+        "stream_url": f"/media/{source.media_key}.mp4",
+        "status": "ready"
+    }
 
 
 @app.post("/api/captions")
-def api_get_captions(payload: CaptionsRequest):
+def api_get_captions(payload: UrlRequest):
+    source = _source(payload.url)
     try:
-        target = payload.video_id or payload.url
-        segments = clip_engine.fetch_captions(target)
-        return {"video_id": clip_engine.extract_video_id(target), "captions": segments}
+        segments = clip_engine.fetch_captions(source)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Captions extraction failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Captions extraction failed: {exc}")
+    return {"video_id": source.media_key, "captions": segments}
+
+
+@app.get("/api/ai/providers")
+def api_list_providers():
+    return {
+        "providers": highlights.list_providers(),
+        "auto": highlights.resolve_provider(AIProvider.AUTO),
+    }
 
 
 @app.post("/api/ai-highlights")
 def api_get_highlights(payload: HighlightsRequest):
     try:
-        highlights = clip_engine.analyze_highlights(payload.captions, payload.api_key)
-        return {"highlights": highlights}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"AI highlight extraction failed: {exc}")
+        provider, clips = highlights.find_highlights(
+            payload.captions,
+            payload.provider,
+            api_key=payload.api_key or None,
+            model=payload.model or None,
+            base_url=payload.base_url or None,
+            query=payload.query or None,
+        )
+    except highlights.ProviderConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except highlights.ProviderCallError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {"provider": provider, "highlights": clips}
 
 
 @app.post("/api/clip", response_model=ClipResponse)
 def api_create_clip(payload: ClipRequest):
+    source_path = MEDIA_DIR / f"{payload.video_id}.mp4"
+    if not source_path.exists():
+        raise HTTPException(status_code=404, detail="Load the video before exporting a clip.")
+
+    clip_id = str(uuid.uuid4())[:8]
+    safe_name = payload.filename or f"clip_{payload.video_id}_{int(payload.start_time)}_{int(payload.end_time)}.mp4"
+    if not safe_name.endswith(".mp4"):
+        safe_name += ".mp4"
+
+    output_path = CLIPS_DIR / f"{clip_id}_{safe_name}"
     try:
-        source_path = MEDIA_DIR / f"{payload.video_id}.mp4"
-        if not source_path.exists():
-            url = f"https://www.youtube.com/watch?v={payload.video_id}"
-            clip_engine.download_video(url, MEDIA_DIR)
-
-        if not source_path.exists():
-            matches = list(MEDIA_DIR.glob(f"{payload.video_id}.*"))
-            if matches:
-                source_path = matches[0]
-            else:
-                raise FileNotFoundError(f"Source file not available for {payload.video_id}")
-
-        clip_id = str(uuid.uuid4())[:8]
-        safe_name = payload.filename or f"clip_{payload.video_id}_{int(payload.start_time)}_{int(payload.end_time)}.mp4"
-        if not safe_name.endswith(".mp4"):
-            safe_name += ".mp4"
-
-        output_path = CLIPS_DIR / f"{clip_id}_{safe_name}"
         clip_engine.cut_clip(str(source_path), payload.start_time, payload.end_time, str(output_path))
-
-        duration = round(payload.end_time - payload.start_time, 2)
-        return ClipResponse(
-            clip_id=clip_id,
-            file_path=str(output_path.resolve()),
-            download_url=f"/downloads/{output_path.name}",
-            duration=duration
-        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Clip cutting failed: {exc}")
+
+    return ClipResponse(
+        clip_id=clip_id,
+        file_path=str(output_path.resolve()),
+        download_url=f"/downloads/{output_path.name}",
+        duration=round(payload.end_time - payload.start_time, 2)
+    )
 
 
 @app.get("/media/{filename}")
