@@ -553,7 +553,6 @@
           <button id="resetRangeBtn" class="btn">Reset</button>
         </div>
         <div class="export-group">
-          <label class="check" title="One line written by the AI from the clip's subtitles, shown for the first 2 seconds"><input type="checkbox" id="hookInput" disabled> Add context hook (first 2 s)</label>
           <button id="exportBtn" class="btn btn-primary" disabled>Export clip</button>
         </div>
       </div>
@@ -656,7 +655,6 @@
     const aiRememberRow = document.getElementById('aiRememberRow');
     const aiRememberInput = document.getElementById('aiRememberInput');
     const aiForgetBtn = document.getElementById('aiForgetBtn');
-    const hookInput = document.getElementById('hookInput');
     const aiAnswered = document.getElementById('aiAnswered');
     const loadError = document.getElementById('loadError');
 
@@ -936,8 +934,6 @@
 
     function updateFindMomentsButton() {
       aiAnalyzeBtn.disabled = allCaptions.length === 0;
-      hookInput.disabled = allCaptions.length === 0;
-      if (hookInput.disabled) hookInput.checked = false;
     }
 
     function providerLabel(id) {
@@ -1097,21 +1093,16 @@
       }
 
       exportBtn.disabled = true;
-      const body = { video_id: currentVideoId, start_time: clipStart, end_time: clipEnd };
-      setStatus(hookInput.checked ? 'Writing the hook and exporting…' : 'Exporting clip…', true);
+      const body = { video_id: currentVideoId, start_time: clipStart, end_time: clipEnd, captions: allCaptions };
+      setStatus('Exporting clip…', true);
 
       try {
-        if (hookInput.checked) {
-          await rememberAiSettings();
-          const { query, ...ai } = aiRequestBody();
-          body.hook = ai;
-        }
         const data = await sendJson('POST', '/api/clip', body, 'Export failed');
-        setStatus(data.hook ? `Clip exported with hook: ${data.hook}` : 'Clip exported');
+        setStatus('Clip exported');
 
         const a = document.createElement('a');
         a.href = data.download_url;
-        a.download = data.file_path.split('/').pop();
+        a.download = data.file_name;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

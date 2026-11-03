@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from clipstudio.app import MEDIA_DIR, app
+from clipstudio.app import CLIPS_DIR, MEDIA_DIR, app
 import subprocess
 from pathlib import Path
 
@@ -80,15 +80,19 @@ def test_clip_endpoint_with_synthetic_media():
         res = client.post("/api/clip", json=clip_req)
         assert res.status_code == 200
         data = res.json()
-        assert "download_url" in data
         assert data["duration"] == 2.0
 
         dl_res = client.get(data["download_url"])
         assert dl_res.status_code == 200
         assert len(dl_res.content) > 0
+        assert dl_res.headers["content-disposition"].startswith("attachment")
+
+        preview = client.get(data["preview_url"])
+        assert preview.status_code == 200
+        assert "attachment" not in preview.headers.get("content-disposition", "")
 
         media_res = client.get(f"/media/{synth_vid_id}.mp4")
         assert media_res.status_code == 200
-        Path(data["file_path"]).unlink()
+        (CLIPS_DIR / data["file_name"]).unlink()
     finally:
         src.unlink(missing_ok=True)

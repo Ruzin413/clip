@@ -10,11 +10,13 @@ description: Run, test and change Clip Studio, the FastAPI clipper for YouTube, 
 App code lives in the `clipstudio/` package, tests in `tests/`, and runtime data in `storage/` at the repo root. Dependencies and pytest settings live in `pyproject.toml`.
 
 - `sources.py` turns a link into a `SourceRef`. Its pattern table is the only place that knows URL shapes. The media key `<platform>_<id>` names the cached file and is the `video_id` the page sees.
-- `clip_engine.py` handles media only: video info, download, subtitles and the ffmpeg cut.
+- `clip_engine.py` handles media only: video info, download, subtitles, the ffmpeg cut, and `burn_hook`, which draws a hook line on a finished clip.
 - `highlights.py` picks moments. The `PROVIDERS` table drives listing, Automatic and every provider call. Models return transcript line numbers, and `plan_to_clips` maps them to real caption times.
-- `hooks.py` writes the one-line context hook from the clip's subtitles plus the 3 lines before it. `check_grounded` rejects any name or number missing from those lines, and `cut_clip` draws the line over the first 2 seconds.
+- `hooks.py` writes the one-line context hook from the clip's subtitles plus the 3 lines before it. `check_grounded` rejects any name or number missing from those lines.
+- `pipelines.py` holds `PIPELINES`, the only place that knows which post-processing pipelines exist, and `execute`, which runs a run's steps in order. A step takes a `StepContext` and returns its detail line or raises. The output is written to a temp path in `storage/clips` and renamed into place, then added to the library as a new clip.
+- `library.py` keeps exported clips and pipeline runs in the same SQLite file as the settings. A clip keeps its source-video times and only the subtitle lines `hooks.hook_window` needs, so any pipeline can run on any clip, including one a run made. Opening the library fails any run a previous process left queued or running.
 - `settings_store.py` keeps remembered keys, models and base URLs in `storage/clip_studio.db`.
-- `app.py` holds the HTTP routes. `models.py` holds the shared shapes. `clipstudio/static/index.html` is the whole frontend.
+- `app.py` holds the HTTP routes and the single pipeline worker, so one ffmpeg runs at a time. `models.py` holds the shared shapes. A run's `status` is derived from its steps, never stored. `clipstudio/static/index.html` is the whole frontend.
 
 ## Run and test
 
@@ -24,10 +26,12 @@ App code lives in the `clipstudio/` package, tests in `tests/`, and runtime data
 
 ## Rules
 
-- Add a platform or an AI provider as one row in its table. Do not add if/else branches elsewhere.
+- Add a platform, an AI provider or a pipeline as one row in its table. Do not add if/else branches elsewhere.
 - Never let a model write seconds. Timestamps come only from caption boundaries.
 - A new AI task is an `LLMRequest` passed to `resolve_call`. Do not add per-provider code for it.
 - Never send a saved API key back to the browser. Report only `saved_key_hint`.
+- Never write an API key into the library. A run's `AIChoice` lives only in the worker's memory.
+- Only the worker writes a run after `POST /api/runs` creates it.
 - Validate a link or media key once, in `app.py`, and trust it everywhere else.
 - Add a dependency to `pyproject.toml`, never only to `start.sh`.
 - Inside `clipstudio/`, import siblings relatively (`from .models import ...`). Tests import `clipstudio.<module>`.
@@ -38,3 +42,4 @@ App code lives in the `clipstudio/` package, tests in `tests/`, and runtime data
 - Twitch clips arrive as HEVC. `ensure_browser_playable` re-encodes them to H.264.
 - ffmpeg builds without libx264 (Fedora's ffmpeg-free) fall back to OpenH264. Test fixtures encode with `mpeg4` so they run anywhere.
 - A whole VOD downloads before preview: about 1.5 GB per hour for Twitch at 720p60.
+- A run that was queued or running when the server stopped shows as failed after the next start. Send the clip again.

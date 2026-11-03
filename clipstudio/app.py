@@ -1,6 +1,8 @@
+import logging
 import os
-import tempfile
-import uuid
+import time
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,8 +10,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import clip_engine, highlights, hooks
-from .models import AIProvider, CaptionSegment, ClipRequest, ClipResponse, ProviderSettings, VideoInfo
+from . import clip_engine, highlights, hooks, pipelines
+from .library import Library
+from .models import (
+    AIChoice, AIProvider, CaptionSegment, Clip, ClipRequest, PipelineInfo, ProviderSettings, Run, VideoInfo,
+)
 from .settings_store import ProviderSettingsStore
 from .sources import SourceRef, UnsupportedSourceError, parse_source
 
@@ -23,9 +28,22 @@ CLIPS_DIR = STORAGE_DIR / "clips"
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 CLIPS_DIR.mkdir(parents=True, exist_ok=True)
 
-provider_settings = ProviderSettingsStore(Path(os.environ.get("CLIP_STUDIO_DB", STORAGE_DIR / "clip_studio.db")))
+DB_PATH = Path(os.environ.get("CLIP_STUDIO_DB", STORAGE_DIR / "clip_studio.db"))
+provider_settings = ProviderSettingsStore(DB_PATH)
+library = Library(DB_PATH)
+# One worker, so one ffmpeg runs at a time and later runs wait in its queue.
+runner = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pipeline")
+log = logging.getLogger(__name__)
 
-app = FastAPI(title="Video Clip Studio")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    # Without this, stopping the server waits for every queued run. The next start marks them failed.
+    runner.shutdown(wait=False, cancel_futures=True)
+
+
+app = FastAPI(title="Video Clip Studio", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +56,12 @@ app.add_middleware(
 
 class UrlRequest(BaseModel):
     url: str
+
+
+class RunRequest(BaseModel):
+    clip_id: str
+    pipeline: str
+    ai: AIChoice = AIChoice()
 
 
 class HighlightsRequest(BaseModel):
@@ -140,55 +164,86 @@ def api_get_highlights(payload: HighlightsRequest):
     return {"provider": provider, "highlights": clips}
 
 
-@app.post("/api/clip", response_model=ClipResponse)
+@app.post("/api/clip", response_model=Clip)
 def api_create_clip(payload: ClipRequest):
     source_path = MEDIA_DIR / f"{payload.video_id}.mp4"
     if not source_path.exists():
         raise HTTPException(status_code=404, detail="Load the video before exporting a clip.")
 
-    clip_id = str(uuid.uuid4())[:8]
+    clip_id = pipelines.new_id()
     safe_name = payload.filename or f"clip_{payload.video_id}_{int(payload.start_time)}_{int(payload.end_time)}.mp4"
     if not safe_name.endswith(".mp4"):
         safe_name += ".mp4"
 
-    hook_text = None
-    if payload.hook:
-        spec = payload.hook
-        try:
-            _, hook_text = hooks.write_hook(
-                spec.captions,
-                payload.start_time,
-                payload.end_time,
-                spec.provider,
-                api_key=spec.api_key or None,
-                model=spec.model or None,
-                base_url=spec.base_url or None,
-                saved=provider_settings.all(),
-            )
-        except highlights.ProviderConfigError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        except highlights.ProviderCallError as exc:
-            raise HTTPException(status_code=502, detail=str(exc))
-
     output_path = CLIPS_DIR / f"{clip_id}_{safe_name}"
     try:
-        if hook_text:
-            with tempfile.TemporaryDirectory() as tmp:
-                plain = Path(tmp) / "plain.mp4"
-                clip_engine.cut_clip(str(source_path), payload.start_time, payload.end_time, str(plain))
-                clip_engine.burn_hook(plain, hook_text, output_path)
-        else:
-            clip_engine.cut_clip(str(source_path), payload.start_time, payload.end_time, str(output_path))
+        clip_engine.cut_clip(str(source_path), payload.start_time, payload.end_time, str(output_path))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Clip cutting failed: {exc}")
 
-    return ClipResponse(
+    before, inside = hooks.hook_window(payload.captions, payload.start_time, payload.end_time)
+    clip = Clip(
         clip_id=clip_id,
-        file_path=str(output_path.resolve()),
-        download_url=f"/downloads/{output_path.name}",
-        duration=round(payload.end_time - payload.start_time, 2),
-        hook=hook_text,
+        video_id=payload.video_id,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+        file_name=output_path.name,
+        captions=[*before, *inside],
+        created_at=time.time(),
     )
+    library.add_clip(clip)
+    return clip
+
+
+@app.get("/api/clips", response_model=list[Clip])
+def api_list_clips():
+    return library.list_clips()
+
+
+@app.get("/api/pipelines", response_model=list[PipelineInfo])
+def api_list_pipelines():
+    return [p.info() for p in pipelines.PIPELINES.values()]
+
+
+def _execute(run_id: str, ai: AIChoice) -> None:
+    try:
+        pipelines.execute(
+            library.get_run(run_id), ai, library=library, clips_dir=CLIPS_DIR, saved=provider_settings.all()
+        )
+    except Exception:
+        log.exception("Run %s stopped outside its steps", run_id)
+
+
+@app.post("/api/runs", response_model=Run, status_code=202)
+def api_start_run(payload: RunRequest):
+    clip = library.get_clip(payload.clip_id)
+    if clip is None:
+        raise HTTPException(status_code=404, detail="That clip is not in the library.")
+    pipeline = pipelines.PIPELINES.get(payload.pipeline)
+    if pipeline is None:
+        raise HTTPException(status_code=400, detail=f"There is no pipeline called {payload.pipeline}.")
+    if pipeline.needs_captions and not clip.captions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{pipeline.label} needs subtitles, and this clip has none. Export it from a video with subtitles.",
+        )
+    run = pipeline.new_run(clip)
+    library.add_run(run)
+    runner.submit(_execute, run.run_id, payload.ai)
+    return run
+
+
+@app.get("/api/runs", response_model=list[Run])
+def api_list_runs():
+    return library.list_runs()
+
+
+@app.get("/api/runs/{run_id}", response_model=Run)
+def api_get_run(run_id: str):
+    run = library.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
 
 
 @app.get("/media/{filename}")
@@ -199,11 +254,21 @@ def serve_media(filename: str):
     return FileResponse(file_path, media_type="video/mp4")
 
 
+def _clip_file(filename: str) -> Path:
+    file_path = CLIPS_DIR / filename
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Clip file not found")
+    return file_path
+
+
+@app.get("/clips/{filename}")
+def serve_clip(filename: str):
+    return FileResponse(_clip_file(filename), media_type="video/mp4")
+
+
 @app.get("/downloads/{filename}")
 def serve_download(filename: str):
-    file_path = CLIPS_DIR / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Clip file not found")
+    file_path = _clip_file(filename)
     return FileResponse(
         file_path,
         media_type="video/mp4",
