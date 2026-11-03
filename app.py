@@ -1,3 +1,4 @@
+import os
 import uuid
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
@@ -8,7 +9,8 @@ from pydantic import BaseModel
 
 import clip_engine
 import highlights
-from models import AIProvider, CaptionSegment, ClipRequest, ClipResponse, VideoInfo
+from models import AIProvider, CaptionSegment, ClipRequest, ClipResponse, ProviderSettings, VideoInfo
+from settings_store import ProviderSettingsStore
 from sources import SourceRef, UnsupportedSourceError, parse_source
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -20,6 +22,8 @@ CLIPS_DIR = STORAGE_DIR / "clips"
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 CLIPS_DIR.mkdir(parents=True, exist_ok=True)
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
+
+provider_settings = ProviderSettingsStore(Path(os.environ.get("CLIP_STUDIO_DB", STORAGE_DIR / "clip_studio.db")))
 
 app = FastAPI(title="Video Clip Studio")
 
@@ -91,10 +95,30 @@ def api_get_captions(payload: UrlRequest):
 
 @app.get("/api/ai/providers")
 def api_list_providers():
+    saved = provider_settings.all()
     return {
-        "providers": highlights.list_providers(),
-        "auto": highlights.resolve_provider(AIProvider.AUTO),
+        "providers": highlights.list_providers(saved),
+        "auto": highlights.resolve_provider(AIProvider.AUTO, saved),
     }
+
+
+def _configurable(provider: AIProvider) -> AIProvider:
+    if provider in (AIProvider.AUTO, AIProvider.LOCAL):
+        raise HTTPException(status_code=400, detail=f"There is nothing to save for {provider.value}.")
+    return provider
+
+
+@app.put("/api/ai/providers/{provider}")
+def api_save_provider_settings(provider: AIProvider, payload: ProviderSettings):
+    cleaned = ProviderSettings(**{k: (v or "").strip() or None for k, v in payload.model_dump().items()})
+    provider_settings.save(_configurable(provider), cleaned)
+    return api_list_providers()
+
+
+@app.delete("/api/ai/providers/{provider}")
+def api_forget_provider_settings(provider: AIProvider):
+    provider_settings.forget(_configurable(provider))
+    return api_list_providers()
 
 
 @app.post("/api/ai-highlights")
@@ -107,6 +131,7 @@ def api_get_highlights(payload: HighlightsRequest):
             model=payload.model or None,
             base_url=payload.base_url or None,
             query=payload.query or None,
+            saved=provider_settings.all(),
         )
     except highlights.ProviderConfigError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

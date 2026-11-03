@@ -338,6 +338,22 @@
       cursor: pointer;
     }
     .ai-form .hint { margin-top: 0; }
+    .ai-remember {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.875rem;
+      color: var(--ink-2);
+      cursor: pointer;
+    }
+    .check input { accent-color: var(--tape); width: 15px; height: 15px; }
     .ai-answered {
       font-size: 0.8125rem;
       color: var(--ink-2);
@@ -553,14 +569,18 @@
               <input type="text" id="aiModelInput" class="field field-sm" autocomplete="off" spellcheck="false">
             </label>
           </div>
-          <label class="ai-field" id="aiKeyRow" hidden>
-            <span class="field-label">API key</span>
+          <div class="ai-field" id="aiKeyRow" hidden>
+            <label class="field-label" for="geminiApiKey">API key</label>
             <input type="password" id="geminiApiKey" class="field field-sm" autocomplete="off" placeholder="API key">
-          </label>
+          </div>
           <label class="ai-field" id="aiBaseUrlRow" hidden>
             <span class="field-label">Base URL</span>
             <input type="url" id="aiBaseUrlInput" class="field field-sm" autocomplete="off" spellcheck="false">
           </label>
+          <div class="ai-remember" id="aiRememberRow" hidden>
+            <label class="check"><input type="checkbox" id="aiRememberInput" checked> Remember on this computer</label>
+            <button type="button" id="aiForgetBtn" class="btn btn-sm" hidden>Forget saved settings</button>
+          </div>
           <p id="aiProviderHint" class="hint"></p>
           <div class="ai-field">
             <label class="field-label" for="aiQueryInput">Look for</label>
@@ -623,6 +643,9 @@
     const aiBaseUrlInput = document.getElementById('aiBaseUrlInput');
     const aiQueryInput = document.getElementById('aiQueryInput');
     const aiProviderHint = document.getElementById('aiProviderHint');
+    const aiRememberRow = document.getElementById('aiRememberRow');
+    const aiRememberInput = document.getElementById('aiRememberInput');
+    const aiForgetBtn = document.getElementById('aiForgetBtn');
     const aiAnswered = document.getElementById('aiAnswered');
     const loadError = document.getElementById('loadError');
 
@@ -674,7 +697,7 @@
       loadBtn.disabled = true;
 
       try {
-        const info = await postJson('/api/info', { url }, 'Could not read this link');
+        const info = await sendJson('POST', '/api/info', { url }, 'Could not read this link');
         currentVideoId = info.video_id;
         exportBtn.disabled = true;
         showMessage(captionsList, 'Fetching subtitles…');
@@ -690,7 +713,7 @@
         document.getElementById('videoDurationDisplay').textContent = info.duration ? formatTime(info.duration) : '';
 
         setStatus('Downloading video…', true);
-        const dlData = await postJson('/api/download', { url }, 'Download failed');
+        const dlData = await sendJson('POST', '/api/download', { url }, 'Download failed');
 
         placeholderView.style.display = 'none';
         videoPlayer.style.display = 'block';
@@ -814,7 +837,7 @@
 
       setStatus('Fetching subtitles…', true);
       try {
-        const data = await postJson('/api/captions', { url }, 'Could not fetch subtitles');
+        const data = await sendJson('POST', '/api/captions', { url }, 'Could not fetch subtitles');
         allCaptions = data.captions || [];
         updateFindMomentsButton();
         if (allCaptions.length === 0) {
@@ -869,7 +892,8 @@
       highlightsList.innerHTML = `<p class="empty"><span class="spinner"></span> Reading the transcript…</p>`;
 
       try {
-        const data = await postJson('/api/ai-highlights', aiRequestBody(), 'Could not find moments');
+        await rememberAiSettings();
+        const data = await sendJson('POST', '/api/ai-highlights', aiRequestBody(), 'Could not find moments');
         const highlights = data.highlights || [];
         renderHighlights(highlights);
         aiAnswered.textContent = `Answered by ${providerLabel(data.provider)}`;
@@ -911,37 +935,78 @@
       try {
         const res = await fetch('/api/ai/providers');
         if (!res.ok) throw new Error(await errorDetail(res, 'Could not load AI providers'));
-        const data = await res.json();
-        aiProviders = new Map(data.providers.map(p => [p.id, p]));
-        aiAuto = data.auto;
+        applyAiProviders(await res.json());
       } catch (err) {
         console.warn(err);
+        applyAiProviders({ providers: [], auto: null });
         aiProviderHint.textContent = 'AI providers could not be loaded. Automatic is the only choice.';
       }
+    }
+
+    function applyAiProviders(data) {
+      const selected = aiProviderSelect.value === 'auto' ? aiPrefs.provider : aiProviderSelect.value;
+      aiProviders = new Map(data.providers.map(p => [p.id, p]));
+      aiAuto = data.auto;
       aiProviderSelect.replaceChildren(new Option(aiAuto ? `Automatic (${providerLabel(aiAuto)})` : 'Automatic', 'auto'));
       for (const p of aiProviders.values()) aiProviderSelect.add(new Option(p.label, p.id));
-      if (aiProviders.has(aiPrefs.provider)) aiProviderSelect.value = aiPrefs.provider;
+      if (aiProviders.has(selected)) aiProviderSelect.value = selected;
       renderAiFields();
     }
+
+    async function rememberAiSettings() {
+      const p = aiProviders.get(aiProviderSelect.value);
+      if (!p?.accepts_key || !aiRememberInput.checked) return;
+      const settings = {
+        api_key: geminiApiKey.value.trim(),
+        model: aiModelInput.value.trim(),
+        base_url: p.uses_base_url ? aiBaseUrlInput.value.trim() : '',
+      };
+      if (!settings.api_key && !settings.model && !settings.base_url) return;
+      applyAiProviders(await sendJson('PUT', `/api/ai/providers/${p.id}`, settings, 'Could not save these settings'));
+    }
+
+    aiForgetBtn.addEventListener('click', async () => {
+      const id = aiProviderSelect.value;
+      try {
+        applyAiProviders(await sendJson('DELETE', `/api/ai/providers/${id}`, null, 'Could not forget these settings'));
+        aiPrefs.models[id] = '';
+        aiPrefs.baseUrls[id] = '';
+        saveAiPrefs();
+        renderAiFields();
+        aiProviderHint.textContent = `Forgot the saved ${providerLabel(id)} settings.`;
+      } catch (err) {
+        aiProviderHint.textContent = err.message;
+      }
+    });
 
     function renderAiFields() {
       const id = aiProviderSelect.value;
       const p = aiProviders.get(id);
       document.getElementById('aiModelRow').hidden = !p;
-      document.getElementById('aiKeyRow').hidden = !p || !(p.needs_key || p.has_server_key);
+      document.getElementById('aiKeyRow').hidden = !p?.accepts_key;
+      aiRememberRow.hidden = !p?.accepts_key;
+      aiForgetBtn.hidden = !p?.has_saved_settings;
       document.getElementById('aiBaseUrlRow').hidden = !p?.uses_base_url;
       geminiApiKey.value = '';
       if (p) {
-        geminiApiKey.placeholder = p.has_server_key ? 'Uses the server key' : 'API key';
+        geminiApiKey.placeholder = p.saved_key_hint ? `Saved key ${p.saved_key_hint}`
+          : p.has_server_key ? 'Uses the server key' : (p.needs_key ? 'API key' : 'API key (optional)');
         aiModelInput.placeholder = p.default_model || 'Model name';
         aiModelInput.value = aiPrefs.models[id] || '';
         aiBaseUrlInput.placeholder = p.default_base_url || 'Base URL';
         aiBaseUrlInput.value = aiPrefs.baseUrls[id] || '';
       }
+      renderAiHint();
+    }
+
+    function renderAiHint() {
+      const p = aiProviders.get(aiProviderSelect.value);
       if (!p && aiAuto) {
         aiProviderHint.textContent = `Automatic uses ${providerLabel(aiAuto)} with the server's settings.`;
-      } else if (p && !document.getElementById('aiKeyRow').hidden) {
-        aiProviderHint.textContent = 'Your key is sent with this request only. It is never saved.';
+      } else if (p?.accepts_key) {
+        aiProviderHint.textContent = aiRememberInput.checked
+          ? 'Saved on this computer when you choose Find moments, so you only enter it once.'
+          : 'Sent with this request only, never saved.';
       } else if (p) {
         aiProviderHint.textContent = '';
       }
@@ -975,6 +1040,7 @@
       aiPrefs.baseUrls[aiProviderSelect.value] = aiBaseUrlInput.value.trim();
       saveAiPrefs();
     });
+    aiRememberInput.addEventListener('change', renderAiHint);
     aiQueryInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !aiAnalyzeBtn.disabled) triggerAiHighlights();
     });
@@ -1052,11 +1118,11 @@
       }
     }
 
-    async function postJson(path, body, fallbackMessage) {
+    async function sendJson(method, path, body, fallbackMessage) {
       const res = await fetch(path, {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: body === null ? undefined : JSON.stringify(body)
       });
       if (!res.ok) throw new Error(await errorDetail(res, fallbackMessage));
       return res.json();

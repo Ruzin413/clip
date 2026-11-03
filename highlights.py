@@ -2,13 +2,14 @@ import json
 import os
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 
 import anthropic
 from pydantic import ValidationError
 
-from models import AIProvider, CaptionSegment, HighlightClip, HighlightPlan, LineSpan, ProviderInfo
+from models import AIProvider, CaptionSegment, HighlightClip, HighlightPlan, LineSpan, ProviderInfo, ProviderSettings
 
 
 class ProviderConfigError(ValueError):
@@ -402,44 +403,60 @@ PROVIDERS: dict[AIProvider, ProviderSpec] = {
 }
 
 
+SavedSettings = Mapping[AIProvider, ProviderSettings]
+NO_SAVED: SavedSettings = MappingProxyType({})
+
+
 def _env(name: str | None) -> str | None:
     return (os.environ.get(name) or None) if name else None
 
 
-def _server_model(spec: ProviderSpec) -> str | None:
-    return _env(spec.model_env) or spec.default_model
+def _server_settings(provider: AIProvider, saved: SavedSettings) -> ProviderSettings:
+    """What the server would use without request overrides: saved settings, then env vars, then defaults."""
+    spec = PROVIDERS[provider]
+    remembered = saved.get(provider) or ProviderSettings()
+    return ProviderSettings(
+        api_key=remembered.api_key or _env(spec.key_env),
+        model=remembered.model or _env(spec.model_env) or spec.default_model,
+        base_url=remembered.base_url or _env(spec.base_url_env) or spec.default_base_url,
+    )
 
 
-def _server_base_url(spec: ProviderSpec) -> str | None:
-    return _env(spec.base_url_env) or spec.default_base_url
+def _key_hint(key: str | None) -> str | None:
+    return f"…{key[-4:]}" if key and len(key) >= 8 else None
 
 
-def resolve_provider(provider: AIProvider) -> AIProvider:
+def resolve_provider(provider: AIProvider, saved: SavedSettings = NO_SAVED) -> AIProvider:
     """AUTO becomes the first AI provider the server can run on its own, else LOCAL."""
     if provider is not AIProvider.AUTO:
         return provider
     return next(
         (
             p for p, spec in PROVIDERS.items()
-            if _env(spec.key_env) and _server_model(spec)
+            if spec.key_env and (s := _server_settings(p, saved)).api_key and s.model
         ),
         AIProvider.LOCAL,
     )
 
 
-def list_providers() -> list[ProviderInfo]:
-    return [
-        ProviderInfo(
+def list_providers(saved: SavedSettings = NO_SAVED) -> list[ProviderInfo]:
+    infos = []
+    for provider, spec in PROVIDERS.items():
+        server = _server_settings(provider, saved)
+        remembered = saved.get(provider)
+        infos.append(ProviderInfo(
             id=provider,
             label=spec.label,
-            has_server_key=_env(spec.key_env) is not None,
+            has_server_key=server.api_key is not None,
             needs_key=spec.needs_key,
-            default_model=_server_model(spec),
+            accepts_key=spec.key_env is not None,
+            saved_key_hint=_key_hint(remembered.api_key) if remembered else None,
+            has_saved_settings=remembered is not None,
+            default_model=server.model,
             uses_base_url=spec.uses_base_url,
-            default_base_url=_server_base_url(spec),
-        )
-        for provider, spec in PROVIDERS.items()
-    ]
+            default_base_url=server.base_url,
+        ))
+    return infos
 
 
 def find_highlights(
@@ -450,21 +467,23 @@ def find_highlights(
     model: str | None = None,
     base_url: str | None = None,
     query: str | None = None,
+    saved: SavedSettings = NO_SAVED,
 ) -> tuple[AIProvider, list[HighlightClip]]:
-    resolved = resolve_provider(provider)
+    resolved = resolve_provider(provider, saved)
     spec = PROVIDERS[resolved]
+    server = _server_settings(resolved, saved)
 
-    key = api_key or _env(spec.key_env)
+    key = api_key or server.api_key
     if spec.needs_key and not key:
         raise ProviderConfigError(
             f"{spec.label} needs an API key. Enter one or set {spec.key_env} on the server."
         )
-    chosen_model = model or _server_model(spec)
+    chosen_model = model or server.model
     if spec.model_env and not chosen_model:
         raise ProviderConfigError(
             f"{spec.label} needs a model name. Enter one or set {spec.model_env} on the server."
         )
-    chosen_base_url = (base_url or _server_base_url(spec) or "").rstrip("/") or None
+    chosen_base_url = (base_url or server.base_url or "").rstrip("/") or None
 
     lines = build_transcript(captions)
     if not lines:

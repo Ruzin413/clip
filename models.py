@@ -68,11 +68,20 @@ class HighlightPlan(BaseModel):
     highlights: list[LineSpan]
 
 
+class ProviderSettings(BaseModel):
+    api_key: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+
+
 class ProviderInfo(BaseModel):
     id: AIProvider
     label: str
     has_server_key: bool
     needs_key: bool
+    accepts_key: bool = False
+    saved_key_hint: str | None = None
+    has_saved_settings: bool = False
     default_model: str | None = None
     uses_base_url: bool = False
     default_base_url: str | None = None
