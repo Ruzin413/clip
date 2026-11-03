@@ -16,7 +16,7 @@ App code lives in the `clipstudio/` package, tests in `tests/`, and runtime data
 - `pipelines.py` holds `PIPELINES`, the only place that knows which post-processing pipelines exist, and `execute`, which runs a run's steps in order. A step takes a `StepContext` and returns its detail line or raises. The output is written to a temp path in `storage/clips` and renamed into place, then added to the library as a new clip.
 - `library.py` keeps exported clips and pipeline runs in the same SQLite file as the settings. A clip keeps its source-video times and only the subtitle lines `hooks.hook_window` needs, so any pipeline can run on any clip, including one a run made. Opening the library fails any run a previous process left queued or running.
 - `settings_store.py` keeps remembered keys, models and base URLs in `storage/clip_studio.db`.
-- `app.py` holds the HTTP routes and the single pipeline worker, so one ffmpeg runs at a time. `models.py` holds the shared shapes. A run's `status` is derived from its steps, never stored. `clipstudio/static/index.html` is the whole frontend.
+- `app.py` holds the HTTP routes and the single pipeline worker, so one ffmpeg runs at a time. `models.py` holds the shared shapes. A run's `status` is derived from its steps, never stored. The frontend is static files with no build step. `clipstudio/static/index.html` is markup only. `css/app.css` holds the design tokens and shared components, `css/editor.css` the editor-only rules. `js/editor.js` is the page's ES module entry point. It calls the server only through `js/api.js`, and shared helpers live in `js/ui.js` and `js/ai-prefs.js`.
 
 ## Run and test
 
