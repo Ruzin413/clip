@@ -220,9 +220,7 @@ def _hook_filter(text_file: Path, width: int, height: int, chars: int) -> str:
     )
 
 
-def cut_clip(
-    source_video_path: str, start_time: float, end_time: float, output_path: str, hook_text: str | None = None
-) -> str:
+def cut_clip(source_video_path: str, start_time: float, end_time: float, output_path: str) -> str:
     source = Path(source_video_path)
     if not source.exists():
         raise FileNotFoundError(f"Source video not found: {source_video_path}")
@@ -231,22 +229,30 @@ def cut_clip(
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
     duration = max(end_time - start_time, 0.1)
-    with tempfile.TemporaryDirectory() as tmp:
-        video_filter = []
-        if hook_text:
-            text_file = Path(tmp) / "hook.txt"
-            text_file.write_text(hook_text, encoding="utf-8")
-            video_filter = ["-vf", _hook_filter(text_file, *_frame_size(source), len(hook_text))]
-        _run_ffmpeg([
-            "-ss", str(round(start_time, 3)),
-            "-i", str(source),
-            "-t", str(round(duration, 3)),
-            *video_filter,
-            *_h264_args(),
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-movflags", "+faststart",
-            str(out_file)
-        ])
+    _run_ffmpeg([
+        "-ss", str(round(start_time, 3)),
+        "-i", str(source),
+        "-t", str(round(duration, 3)),
+        *_h264_args(),
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-movflags", "+faststart",
+        str(out_file)
+    ])
 
     return str(out_file.resolve())
+
+
+def burn_hook(input_path: Path, text: str, output_path: Path) -> None:
+    """Re-encode a clip with the hook line drawn over its first HOOK_SECONDS."""
+    with tempfile.TemporaryDirectory() as tmp:
+        text_file = Path(tmp) / "hook.txt"
+        text_file.write_text(text, encoding="utf-8")
+        _run_ffmpeg([
+            "-i", str(input_path),
+            "-vf", _hook_filter(text_file, *_frame_size(input_path), len(text)),
+            *_h264_args(),
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            str(output_path),
+        ])

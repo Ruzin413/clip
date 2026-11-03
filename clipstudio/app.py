@@ -1,4 +1,5 @@
 import os
+import tempfile
 import uuid
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
@@ -171,7 +172,13 @@ def api_create_clip(payload: ClipRequest):
 
     output_path = CLIPS_DIR / f"{clip_id}_{safe_name}"
     try:
-        clip_engine.cut_clip(str(source_path), payload.start_time, payload.end_time, str(output_path), hook_text)
+        if hook_text:
+            with tempfile.TemporaryDirectory() as tmp:
+                plain = Path(tmp) / "plain.mp4"
+                clip_engine.cut_clip(str(source_path), payload.start_time, payload.end_time, str(plain))
+                clip_engine.burn_hook(plain, hook_text, output_path)
+        else:
+            clip_engine.cut_clip(str(source_path), payload.start_time, payload.end_time, str(output_path))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Clip cutting failed: {exc}")
 
