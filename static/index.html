@@ -258,11 +258,15 @@
       width: 100%;
       background: none;
       -webkit-appearance: none;
-      pointer-events: auto;
+      pointer-events: none;
       height: 20px;
+    }
+    .range-input::-moz-range-thumb {
+      pointer-events: auto;
     }
     .range-input::-webkit-slider-thumb {
       -webkit-appearance: none;
+      pointer-events: auto;
       width: 14px;
       height: 28px;
       background: #fff;
