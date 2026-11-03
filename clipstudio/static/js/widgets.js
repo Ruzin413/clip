@@ -90,6 +90,7 @@ export function clipCard(clip, pipelines) {
         ${clip.hook ? `<p class="clip-hook">Hook: ${escapeHtml(clip.hook)}</p>` : ''}
         <div class="clip-actions">
           <a class="btn btn-sm" href="${escapeHtml(clip.download_url)}" download="${escapeHtml(clip.file_name)}">Download</a>
+          <button type="button" class="btn btn-sm btn-danger" data-action="delete-clip" data-clip-id="${escapeHtml(clip.clip_id)}">Delete</button>
           ${sendControl(clip, pipelines)}
         </div>
       </div>

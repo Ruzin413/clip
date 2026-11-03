@@ -161,6 +161,24 @@ def test_ungrounded_hook_fails_the_first_step_and_skips_drawing(fake_ai):
     assert not (CLIPS_DIR / f".{run['run_id']}.part.mp4").exists()
 
 
+def test_rerun_retries_existing_run_without_creating_new_run(fake_ai):
+    fake_ai["draft"] = HookDraft(text="Shroud says welcome back", source_lines=[0])
+    orig_runs_count = len(client.get("/api/runs").json())
+    run = _finished(_send(_export()["clip_id"])["run_id"])
+    assert run["status"] == "failed"
+    assert len(client.get("/api/runs").json()) == orig_runs_count + 1
+
+    fake_ai["draft"] = GROUNDED
+    rerun_res = client.post(f"/api/runs/{run['run_id']}/rerun", json={"ai": {"provider": "openai"}})
+    assert rerun_res.status_code == 200
+    assert rerun_res.json()["run_id"] == run["run_id"]
+
+    finished_run = _finished(run["run_id"])
+    assert finished_run["status"] == "done"
+    assert finished_run["run_id"] == run["run_id"]
+    assert len(client.get("/api/runs").json()) == orig_runs_count + 1
+
+
 def test_runs_are_rejected_before_queuing_when_they_cannot_start():
     bare = _export(captions=[])
     res = client.post("/api/runs", json={"clip_id": bare["clip_id"], "pipeline": "context-hook"})

@@ -20,7 +20,10 @@
   <main class="workspace">
     <section class="pane runs-pane" aria-labelledby="runsHeading">
       <div class="pane-head">
-        <h1 id="runsHeading" class="pane-title">Runs</h1>
+        <div class="pane-head-title">
+          <h1 id="runsHeading" class="pane-title">Runs</h1>
+          <button type="button" id="clearRunsBtn" class="btn btn-sm" hidden>Clear finished</button>
+        </div>
         <p id="aiChoice" class="hint"></p>
       </div>
       <p id="pageError" class="pane-error" role="alert" hidden></p>
