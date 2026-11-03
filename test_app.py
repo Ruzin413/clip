@@ -1,7 +1,5 @@
 from fastapi.testclient import TestClient
 from app import app
-import tempfile
-from pathlib import Path
 import subprocess
 
 client = TestClient(app)
@@ -9,10 +7,25 @@ client = TestClient(app)
 def test_static_index():
     response = client.get("/")
     assert response.status_code == 200
-    assert "Clip Studio" in response.text or "YouTube" in response.text
+    assert "Clip Studio" in response.text
+
+def test_unsupported_link_is_rejected_with_reason():
+    for path in ("/api/info", "/api/download", "/api/captions"):
+        response = client.post(path, json={"url": "https://vimeo.com/123456"})
+        assert response.status_code == 400, path
+        assert "Twitch" in response.json()["detail"]
+
+def test_providers_endpoint_lists_every_provider():
+    response = client.get("/api/ai/providers")
+    assert response.status_code == 200
+    data = response.json()
+    ids = {p["id"] for p in data["providers"]}
+    assert {"claude", "gemini", "openai", "local"} <= ids
+    assert data["auto"] in ids
 
 def test_ai_highlights_endpoint():
     payload = {
+        "provider": "local",
         "captions": [
             {"start": 0.0, "end": 5.0, "text": "Welcome to the show."},
             {"start": 5.1, "end": 12.0, "text": "The key secret strategy to master coding is practice."},
@@ -23,47 +36,58 @@ def test_ai_highlights_endpoint():
     response = client.post("/api/ai-highlights", json=payload)
     assert response.status_code == 200
     data = response.json()
-    assert "highlights" in data
+    assert data["provider"] == "local"
     assert len(data["highlights"]) >= 1
     h = data["highlights"][0]
-    assert "start" in h
-    assert "end" in h
-    assert "title" in h
-    assert "reason" in h
+    assert h["end"] > h["start"]
+    assert h["title"] and h["reason"]
+
+def test_ai_highlights_without_key_is_a_client_error(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    payload = {
+        "provider": "claude",
+        "captions": [{"start": 0.0, "end": 5.0, "text": "Hello."}],
+    }
+    response = client.post("/api/ai-highlights", json=payload)
+    assert response.status_code == 400
+    assert "ANTHROPIC_API_KEY" in response.json()["detail"]
+
+def test_clip_rejects_unknown_and_malformed_media_keys():
+    missing = client.post("/api/clip", json={"video_id": "twitch_999999999", "start_time": 0, "end_time": 1})
+    assert missing.status_code == 404
+    traversal = client.post("/api/clip", json={"video_id": "../../app", "start_time": 0, "end_time": 1})
+    assert traversal.status_code == 422
 
 def test_clip_endpoint_with_synthetic_media():
     from app import MEDIA_DIR
-    synth_vid_id = "test_synth_vid"
+    synth_vid_id = "youtube_testsynth"
     src = MEDIA_DIR / f"{synth_vid_id}.mp4"
     gen_cmd = [
         "ffmpeg", "-y",
         "-f", "lavfi", "-i", "testsrc=duration=4:size=320x240:rate=30",
         "-f", "lavfi", "-i", "sine=frequency=1000:duration=4",
-        "-c:v", "libx264", "-c:a", "aac",
+        "-c:v", "mpeg4", "-c:a", "aac",
         str(src)
     ]
     subprocess.run(gen_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    clip_req = {
-        "video_id": synth_vid_id,
-        "start_time": 0.5,
-        "end_time": 2.5
-    }
-    res = client.post("/api/clip", json=clip_req)
-    assert res.status_code == 200
-    data = res.json()
-    assert "download_url" in data
-    assert data["duration"] == 2.0
+    try:
+        clip_req = {
+            "video_id": synth_vid_id,
+            "start_time": 0.5,
+            "end_time": 2.5
+        }
+        res = client.post("/api/clip", json=clip_req)
+        assert res.status_code == 200
+        data = res.json()
+        assert "download_url" in data
+        assert data["duration"] == 2.0
 
-    dl_res = client.get(data["download_url"])
-    assert dl_res.status_code == 200
-    assert len(dl_res.content) > 0
+        dl_res = client.get(data["download_url"])
+        assert dl_res.status_code == 200
+        assert len(dl_res.content) > 0
 
-    media_res = client.get(f"/media/{synth_vid_id}.mp4")
-    assert media_res.status_code == 200
-
-if __name__ == "__main__":
-    test_static_index()
-    test_ai_highlights_endpoint()
-    test_clip_endpoint_with_synthetic_media()
-    print("ALL API ENDPOINT TESTS PASSED SUCCESSFULLY!")
+        media_res = client.get(f"/media/{synth_vid_id}.mp4")
+        assert media_res.status_code == 200
+    finally:
+        src.unlink(missing_ok=True)

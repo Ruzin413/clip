@@ -6,3 +6,5 @@ storage/media/*
 storage/clips/*
 !storage/clips/.gitkeep
 .DS_Store
+storage/*.db
+storage/*.db-journal
