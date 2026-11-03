@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 if [ ! -d ".venv" ]; then
     uv venv
 fi
-uv pip install -q fastapi uvicorn yt-dlp youtube-transcript-api pydantic python-multipart httpx anthropic
+uv pip install -q -r pyproject.toml
 
 echo "Starting Clip Studio on http://localhost:8000 ..."
-.venv/bin/python -m uvicorn app:app --host 0.0.0.0 --port 8000
+.venv/bin/python -m uvicorn clipstudio.app:app --host 0.0.0.0 --port 8000

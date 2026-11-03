@@ -7,22 +7,20 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import clip_engine
-import highlights
-import hooks
-from models import AIProvider, CaptionSegment, ClipRequest, ClipResponse, ProviderSettings, VideoInfo
-from settings_store import ProviderSettingsStore
-from sources import SourceRef, UnsupportedSourceError, parse_source
+from . import clip_engine, highlights, hooks
+from .models import AIProvider, CaptionSegment, ClipRequest, ClipResponse, ProviderSettings, VideoInfo
+from .settings_store import ProviderSettingsStore
+from .sources import SourceRef, UnsupportedSourceError, parse_source
 
-BASE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "static"
-STORAGE_DIR = BASE_DIR / "storage"
+PACKAGE_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = PACKAGE_DIR.parent
+STATIC_DIR = PACKAGE_DIR / "static"
+STORAGE_DIR = PROJECT_DIR / "storage"
 MEDIA_DIR = STORAGE_DIR / "media"
 CLIPS_DIR = STORAGE_DIR / "clips"
 
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 CLIPS_DIR.mkdir(parents=True, exist_ok=True)
-STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 provider_settings = ProviderSettingsStore(Path(os.environ.get("CLIP_STUDIO_DB", STORAGE_DIR / "clip_studio.db")))
 

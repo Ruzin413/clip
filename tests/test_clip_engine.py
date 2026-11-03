@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from clip_engine import cut_clip, ensure_browser_playable, parse_json3, parse_vtt
-from models import CaptionSegment, ClipRequest, ClipResponse, Platform, VideoInfo
+from clipstudio.clip_engine import cut_clip, ensure_browser_playable, parse_json3, parse_vtt
+from clipstudio.models import CaptionSegment, ClipRequest, ClipResponse, Platform, VideoInfo
 
 
 def test_models_validation():

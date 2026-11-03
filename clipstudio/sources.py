@@ -3,7 +3,7 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import Literal
 
-from models import Platform
+from .models import Platform
 
 SourceKind = Literal["video", "clip"]
 

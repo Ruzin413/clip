@@ -3,8 +3,8 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel
 
-from highlights import NO_SAVED, LLMRequest, ProviderCallError, ProviderConfigError, SavedSettings, resolve_call
-from models import AIProvider, CaptionSegment
+from .highlights import NO_SAVED, LLMRequest, ProviderCallError, ProviderConfigError, SavedSettings, resolve_call
+from .models import AIProvider, CaptionSegment
 
 LINES_BEFORE = 3
 MAX_WORDS = 12

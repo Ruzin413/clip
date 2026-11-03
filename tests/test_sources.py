@@ -2,8 +2,8 @@ import re
 
 import pytest
 
-from models import MEDIA_KEY_PATTERN, Platform
-from sources import UnsupportedSourceError, parse_source
+from clipstudio.models import MEDIA_KEY_PATTERN, Platform
+from clipstudio.sources import UnsupportedSourceError, parse_source
 
 YT = Platform.YOUTUBE
 TW = Platform.TWITCH

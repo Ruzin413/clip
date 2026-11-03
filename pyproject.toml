@@ -1,0 +1,23 @@
+[project]
+name = "clipstudio"
+version = "0.1.0"
+description = "Clip YouTube, Twitch and Kick videos, with AI-picked moments and a context hook."
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=2.4",
+    "fastapi",
+    "httpx",
+    "pydantic",
+    "python-multipart",
+    "requests",
+    "uvicorn",
+    "youtube-transcript-api>=1.2",
+    "yt-dlp",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

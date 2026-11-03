@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import highlights
-from app import MEDIA_DIR, app
-from hooks import HookDraft, build_prompt, check_grounded, hook_window, write_hook
-from models import AIProvider, CaptionSegment
+from clipstudio import highlights
+from clipstudio.app import MEDIA_DIR, app
+from clipstudio.hooks import HookDraft, build_prompt, check_grounded, hook_window, write_hook
+from clipstudio.models import AIProvider, CaptionSegment
 
 client = TestClient(app)
 
