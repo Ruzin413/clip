@@ -20,7 +20,13 @@ This creates `.venv`, installs the dependencies from `pyproject.toml`, and serve
 
 ## AI providers
 
-Choose Claude, Gemini, any OpenAI-compatible server, or the local keyword method in the Highlights panel. Type a key in the page with "Remember on this computer" ticked, and it is saved to `storage/clip_studio.db` for next time. You can instead set `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `OPENAI_API_KEY` with `OPENAI_MODEL` before you run `./start.sh`.
+Choose Claude, Gemini, any OpenAI-compatible server, or the local keyword method in the Highlights panel. Type a key in the page with "Remember on this computer" ticked, and it is saved to `storage/clip_studio.db` for next time. You can instead set `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `OPENAI_API_KEY` with `OPENAI_MODEL` and optional `OPENAI_BASE_URL` before you run `./start.sh`.
+
+When configuring an OpenAI-compatible provider (or router like OpenRouter), provide the base URL up through the version prefix, omitting `/chat/completions` (the app appends `/chat/completions` automatically):
+- **OpenRouter**: `https://openrouter.ai/api/v1`
+- **Ollama**: `http://localhost:11434/v1`
+- **LM Studio**: `http://localhost:1234/v1`
+- **Groq**: `https://api.groq.com/openai/v1`
 
 Twitch and Kick do not publish subtitles, so AI features work only on videos that have them.
 
