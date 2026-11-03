@@ -64,6 +64,10 @@ class RunRequest(BaseModel):
     ai: AIChoice = AIChoice()
 
 
+class RerunRequest(BaseModel):
+    ai: AIChoice = AIChoice()
+
+
 class HighlightsRequest(BaseModel):
     captions: list[CaptionSegment]
     provider: AIProvider = AIProvider.AUTO
@@ -266,6 +270,22 @@ def api_get_run(run_id: str):
     run = library.get_run(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
+    return run
+
+
+@app.post("/api/runs/{run_id}/rerun", response_model=Run)
+def api_rerun(run_id: str, payload: RerunRequest):
+    run = library.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status in (RunStatus.QUEUED, RunStatus.RUNNING):
+        raise HTTPException(status_code=400, detail="Run is already active.")
+    clip = library.get_clip(run.input_clip_id)
+    if clip is None:
+        raise HTTPException(status_code=404, detail="The input clip for this run is no longer in the library.")
+    run.reset()
+    library.save_run(run)
+    runner.submit(_execute, run.run_id, payload.ai)
     return run
 
 

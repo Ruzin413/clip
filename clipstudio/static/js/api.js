@@ -91,6 +91,14 @@ export const getPipelines = () => getJson('/api/pipelines', 'Could not load the 
  */
 export const createRun = (body) => sendJson('POST', '/api/runs', body, 'Could not send the clip');
 
+/**
+ * @param {string} runId
+ * @param {{ai?: AIChoice}} [body]
+ * @returns {Promise<Run>}
+ */
+export const rerunRun = (runId, body = {}) =>
+  sendJson('POST', `/api/runs/${encodeURIComponent(runId)}/rerun`, body, 'Could not retry the run');
+
 /** @returns {Promise<Run[]>} newest first */
 export const listRuns = () => getJson('/api/runs', 'Could not load the runs');
 

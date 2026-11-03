@@ -210,6 +210,15 @@ class Run(BaseModel):
         for later in self.steps[index + 1:]:
             later.state = StepState.SKIPPED
 
+    def reset(self) -> None:
+        """Reset all steps back to queued state for a retry."""
+        for step in self.steps:
+            step.state = StepState.QUEUED
+            step.started_at = None
+            step.finished_at = None
+            step.detail = None
+        self.output_clip_id = None
+
 
 class PipelineStepInfo(BaseModel):
     id: str

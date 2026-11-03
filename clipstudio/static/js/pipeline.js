@@ -1,4 +1,4 @@
-import { clearRuns, createRun, deleteClip, deleteRun, getPipelines, listClips, listProviders, listRuns } from './api.js';
+import { clearRuns, createRun, deleteClip, deleteRun, getPipelines, listClips, listProviders, listRuns, rerunRun } from './api.js';
 import { aiChoiceFromPrefs } from './ai-prefs.js';
 import { escapeHtml, renderNav, showMessage } from './ui.js';
 import { clipCard, clipName, onSend, setSendStatus, showActiveRunCount } from './widgets.js';
@@ -70,7 +70,7 @@ function runHtml(run) {
     ${run.status === 'failed' ? `
       <div class="run-actions">
         <button type="button" class="btn btn-sm" data-action="rerun"
-          data-clip-id="${escapeHtml(run.input_clip_id)}" data-pipeline="${escapeHtml(run.pipeline)}">Run again</button>
+          data-run-id="${escapeHtml(run.run_id)}">Run again</button>
         <p class="send-status" role="status"></p>
       </div>` : ''}`;
 }
@@ -173,6 +173,21 @@ async function startRun(clipId, pipeline, button, status) {
   }
 }
 
+async function retryRun(runId, button, status) {
+  button.disabled = true;
+  setSendStatus(status, 'Retrying…');
+  try {
+    await rerunRun(runId, { ai: aiChoiceFromPrefs() });
+    setSendStatus(status, '');
+    await refresh();
+    focusRun(runId);
+  } catch (err) {
+    setSendStatus(status, err.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function showAiChoice() {
   const choice = aiChoiceFromPrefs();
   let label = choice.provider;
@@ -191,7 +206,7 @@ onSend(document.body, ({ clipId, pipeline, button, status }) => startRun(clipId,
 
 runsList.addEventListener('click', (e) => {
   const button = e.target.closest('[data-action="rerun"]');
-  if (button) startRun(button.dataset.clipId, button.dataset.pipeline, button, button.nextElementSibling);
+  if (button) retryRun(button.dataset.runId, button, button.nextElementSibling);
 });
 
 document.body.addEventListener('click', async (e) => {
