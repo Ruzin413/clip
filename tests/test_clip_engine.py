@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from clipstudio.clip_engine import cut_clip, ensure_browser_playable, parse_json3, parse_vtt
-from clipstudio.models import CaptionSegment, ClipRequest, ClipResponse, Platform, VideoInfo
+from clipstudio.models import CaptionSegment, ClipRequest, Platform, VideoInfo
 
 
 def test_models_validation():
@@ -32,14 +32,6 @@ def test_models_validation():
     for bad_key in ("abc", "vimeo_123", "youtube_../../etc"):
         with pytest.raises(ValidationError):
             ClipRequest(video_id=bad_key, start_time=5.0, end_time=12.0)
-
-    res = ClipResponse(
-        clip_id="c1",
-        file_path="/tmp/c1.mp4",
-        download_url="/clips/c1.mp4",
-        duration=7.0
-    )
-    assert res.duration == 7.0
 
 
 def _pairs(segments: list[CaptionSegment]) -> list[tuple[float, float, str]]:

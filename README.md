@@ -1,6 +1,8 @@
 # Clip Studio
 
-Cut short clips from YouTube, Twitch and Kick videos. Pick the range by hand, or let an AI read the subtitles and suggest moments. A clip can open with a one-line context hook written from its own subtitles.
+Cut short clips from YouTube, Twitch and Kick videos. Pick the range by hand, or let an AI read the subtitles and suggest moments.
+
+Every exported clip is kept in a library. Send a clip into a pipeline from the editor's "Then send to" menu or from the Pipeline page, and follow each step there until it finishes. A pipeline's output is a new clip, so you can send it on to another pipeline. The first pipeline, Context hook, has an AI write one line from the clip's subtitles and draws it over the first 2 seconds.
 
 ## Requirements
 
@@ -31,9 +33,9 @@ uv pip install --python .venv/bin/python pytest
 
 ## Layout
 
-- `clipstudio/` is the app: routes in `app.py`, the page in `static/index.html`.
+- `clipstudio/` is the app: routes and the pipeline worker in `app.py`, pipelines in `pipelines.py`, and the editor and Pipeline pages in `static/`.
 - `tests/` holds the pytest suite.
-- `storage/` holds downloaded videos, exported clips and saved AI settings. Git ignores its contents.
+- `storage/` holds downloaded videos, exported clips, and a SQLite file with the clip library, the runs and saved AI settings. Git ignores its contents.
 
 ## Working with an AI agent
 

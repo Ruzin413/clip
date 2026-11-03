@@ -1,15 +1,8 @@
-import subprocess
-from pathlib import Path
-
 import pytest
-from fastapi.testclient import TestClient
 
 from clipstudio import highlights
-from clipstudio.app import MEDIA_DIR, app
 from clipstudio.hooks import HookDraft, build_prompt, check_grounded, hook_window, write_hook
 from clipstudio.models import AIProvider, CaptionSegment
-
-client = TestClient(app)
 
 CAPTIONS = [
     CaptionSegment(start=0.0, end=4.0, text="welcome back everyone"),
@@ -93,65 +86,3 @@ def test_write_hook_sends_the_rules_and_window(monkeypatch):
     assert "Use only facts stated in these lines" in seen["system"]
     assert "welcome back everyone" not in seen["prompt"]
     assert seen["output"] is HookDraft
-
-
-def _hook_band(path: Path, at: float) -> bytes:
-    """Grayscale pixels of the top quarter of the frame, where the hook is drawn."""
-    return subprocess.run(
-        ["ffmpeg", "-v", "error", "-ss", str(at), "-i", str(path), "-frames:v", "1",
-         "-vf", "crop=iw:ih/4:0:0,format=gray", "-f", "rawvideo", "-"],
-        capture_output=True, check=True,
-    ).stdout
-
-
-def _band_difference(a: Path, b: Path, at: float) -> float:
-    x, y = _hook_band(a, at), _hook_band(b, at)
-    return sum(abs(p - q) for p, q in zip(x, y)) / len(x)
-
-
-def test_export_burns_the_hook_into_the_first_two_seconds(monkeypatch):
-    _fake_provider(monkeypatch, HookDraft(text="They lost the last two games", source_lines=[1]))
-    key = "youtube_hooksynth"
-    src = MEDIA_DIR / f"{key}.mp4"
-    subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=duration=8:size=640x360:rate=25",
-         "-f", "lavfi", "-i", "sine=duration=8", "-c:v", "mpeg4", "-q:v", "3", "-c:a", "aac", str(src)],
-        check=True, capture_output=True,
-    )
-    try:
-        captions = [c.model_dump() for c in CAPTIONS]
-        plain = client.post("/api/clip", json={"video_id": key, "start_time": 0, "end_time": 5})
-        hooked = client.post("/api/clip", json={
-            "video_id": key, "start_time": 0, "end_time": 5,
-            "hook": {"captions": captions, "provider": "openai"},
-        })
-        assert plain.status_code == 200 and plain.json()["hook"] is None
-        assert hooked.status_code == 200, hooked.text
-        assert hooked.json()["hook"] == "They lost the last two games"
-        plain_path, hooked_path = Path(plain.json()["file_path"]), Path(hooked.json()["file_path"])
-        shown, gone = _band_difference(plain_path, hooked_path, 0.5), _band_difference(plain_path, hooked_path, 3.0)
-        assert shown > 10, f"hook visible at 0.5 s (mean difference {shown:.1f})"
-        assert gone < 2, f"hook gone by 3 s (mean difference {gone:.1f})"
-        plain_path.unlink()
-        hooked_path.unlink()
-    finally:
-        src.unlink(missing_ok=True)
-
-
-def test_rejected_hook_fails_the_export_with_the_reason(monkeypatch):
-    _fake_provider(monkeypatch, HookDraft(text="Shroud says welcome back", source_lines=[0]))
-    key = "youtube_hookreject"
-    src = MEDIA_DIR / f"{key}.mp4"
-    subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=duration=3:size=320x180:rate=25", "-c:v", "mpeg4", str(src)],
-        check=True, capture_output=True,
-    )
-    try:
-        res = client.post("/api/clip", json={
-            "video_id": key, "start_time": 0, "end_time": 2,
-            "hook": {"captions": [c.model_dump() for c in CAPTIONS], "provider": "openai"},
-        })
-        assert res.status_code == 502
-        assert "Shroud" in res.json()["detail"]
-    finally:
-        src.unlink(missing_ok=True)
