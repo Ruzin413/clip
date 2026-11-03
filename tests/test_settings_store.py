@@ -3,10 +3,10 @@ import stat
 import pytest
 from fastapi.testclient import TestClient
 
-import highlights
-from app import app, provider_settings
-from models import AIProvider, ProviderSettings
-from settings_store import ProviderSettingsStore
+from clipstudio import highlights
+from clipstudio.app import app, provider_settings
+from clipstudio.models import AIProvider, ProviderSettings
+from clipstudio.settings_store import ProviderSettingsStore
 
 client = TestClient(app)
 SECRET = "sk-ant-test-secret-9876"

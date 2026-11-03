@@ -7,9 +7,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-import highlights
-from highlights import ProviderCallError, ProviderConfigError, find_highlights, list_providers, resolve_provider
-from models import AIProvider, CaptionSegment
+from clipstudio import highlights
+from clipstudio.highlights import ProviderCallError, ProviderConfigError, find_highlights, list_providers, resolve_provider
+from clipstudio.models import AIProvider, CaptionSegment
 
 PROVIDER_ENV = [
     "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",

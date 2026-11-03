@@ -9,7 +9,7 @@ from types import MappingProxyType
 import anthropic
 from pydantic import BaseModel, ValidationError
 
-from models import AIProvider, CaptionSegment, HighlightClip, HighlightPlan, LineSpan, ProviderInfo, ProviderSettings
+from .models import AIProvider, CaptionSegment, HighlightClip, HighlightPlan, LineSpan, ProviderInfo, ProviderSettings
 
 
 class ProviderConfigError(ValueError):

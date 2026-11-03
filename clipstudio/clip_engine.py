@@ -12,8 +12,8 @@ import requests
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi, YouTubeTranscriptApiException
 
-from models import CaptionSegment, Platform, VideoInfo
-from sources import SourceRef
+from .models import CaptionSegment, Platform, VideoInfo
+from .sources import SourceRef
 
 CHAT_TRACKS = {"live_chat", "rechat"}
 SUBTITLE_EXTS = ("json3", "vtt")

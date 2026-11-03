@@ -2,7 +2,7 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from models import AIProvider, ProviderSettings
+from .models import AIProvider, ProviderSettings
 
 
 class ProviderSettingsStore:

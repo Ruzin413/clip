@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from app import app
+from clipstudio.app import MEDIA_DIR, app
 import subprocess
 from pathlib import Path
 
@@ -60,7 +60,6 @@ def test_clip_rejects_unknown_and_malformed_media_keys():
     assert traversal.status_code == 422
 
 def test_clip_endpoint_with_synthetic_media():
-    from app import MEDIA_DIR
     synth_vid_id = "youtube_testsynth"
     src = MEDIA_DIR / f"{synth_vid_id}.mp4"
     gen_cmd = [
