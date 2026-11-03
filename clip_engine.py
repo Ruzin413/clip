@@ -3,6 +3,7 @@ import html
 import json
 import re
 import subprocess
+import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from sources import SourceRef
 CHAT_TRACKS = {"live_chat", "rechat"}
 SUBTITLE_EXTS = ("json3", "vtt")
 BROWSER_VIDEO_CODECS = {"h264", "vp9", "av1"}
+HOOK_SECONDS = 2
 
 _VTT_TIME = r"(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{3})"
 _VTT_CUE_TIMING = re.compile(rf"{_VTT_TIME}\s+-->\s+{_VTT_TIME}")
@@ -199,7 +201,28 @@ def parse_vtt(text: str) -> list[CaptionSegment]:
     return _segments(rows)
 
 
-def cut_clip(source_video_path: str, start_time: float, end_time: float, output_path: str) -> str:
+def _frame_size(path: Path) -> tuple[int, int]:
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    width, height = out.split(",")[:2]
+    return int(width), int(height)
+
+
+def _hook_filter(text_file: Path, width: int, height: int, chars: int) -> str:
+    # Roughly 0.6 em per character, so the line fits 90% of the width; never taller than 1/14 of the frame.
+    size = max(12, int(min(height / 14, 0.9 * width / (0.6 * max(chars, 1)))))
+    return (
+        f"drawtext=textfile={text_file}:expansion=none:font=Sans:fontcolor=white:fontsize={size}"
+        f":box=1:boxcolor=black@0.65:boxborderw={size // 2}:x=(w-text_w)/2:y=h*0.08"
+        f":enable='lt(t,{HOOK_SECONDS})'"
+    )
+
+
+def cut_clip(
+    source_video_path: str, start_time: float, end_time: float, output_path: str, hook_text: str | None = None
+) -> str:
     source = Path(source_video_path)
     if not source.exists():
         raise FileNotFoundError(f"Source video not found: {source_video_path}")
@@ -208,15 +231,22 @@ def cut_clip(source_video_path: str, start_time: float, end_time: float, output_
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
     duration = max(end_time - start_time, 0.1)
-    _run_ffmpeg([
-        "-ss", str(round(start_time, 3)),
-        "-i", str(source),
-        "-t", str(round(duration, 3)),
-        *_h264_args(),
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-movflags", "+faststart",
-        str(out_file)
-    ])
+    with tempfile.TemporaryDirectory() as tmp:
+        video_filter = []
+        if hook_text:
+            text_file = Path(tmp) / "hook.txt"
+            text_file.write_text(hook_text, encoding="utf-8")
+            video_filter = ["-vf", _hook_filter(text_file, *_frame_size(source), len(hook_text))]
+        _run_ffmpeg([
+            "-ss", str(round(start_time, 3)),
+            "-i", str(source),
+            "-t", str(round(duration, 3)),
+            *video_filter,
+            *_h264_args(),
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-movflags", "+faststart",
+            str(out_file)
+        ])
 
     return str(out_file.resolve())

@@ -87,11 +87,21 @@ class ProviderInfo(BaseModel):
     default_base_url: str | None = None
 
 
+class HookSpec(BaseModel):
+    """Ask for a context hook on the exported clip, written from these subtitles."""
+    captions: list[CaptionSegment]
+    provider: AIProvider = AIProvider.AUTO
+    api_key: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+
+
 class ClipRequest(BaseModel):
     video_id: str = Field(pattern=MEDIA_KEY_PATTERN)
     start_time: float = Field(ge=0.0)
     end_time: float = Field(ge=0.0)
     filename: str | None = Field(default=None, pattern=r"^[\w.-]+$")
+    hook: HookSpec | None = None
 
     @model_validator(mode="after")
     def validate_bounds(self) -> "ClipRequest":
@@ -105,3 +115,4 @@ class ClipResponse(BaseModel):
     file_path: str
     download_url: str
     duration: float = Field(ge=0.0)
+    hook: str | None = None

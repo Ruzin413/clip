@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 from app import app
 import subprocess
+from pathlib import Path
 
 client = TestClient(app)
 
@@ -89,5 +90,6 @@ def test_clip_endpoint_with_synthetic_media():
 
         media_res = client.get(f"/media/{synth_vid_id}.mp4")
         assert media_res.status_code == 200
+        Path(data["file_path"]).unlink()
     finally:
         src.unlink(missing_ok=True)
