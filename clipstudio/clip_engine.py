@@ -1,8 +1,10 @@
 import functools
 import html
 import json
+import os
 import re
 import subprocess
+import sys
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
@@ -210,11 +212,24 @@ def _frame_size(path: Path) -> tuple[int, int]:
     return int(width), int(height)
 
 
+def _filter_path(path: Path) -> str:
+    # A Windows path's drive colon would end the option, so use forward slashes and escape the colon.
+    return "'" + path.as_posix().replace(":", r"\:") + "'"
+
+
+def _hook_font() -> str:
+    # Windows ffmpeg builds ship without a fontconfig config, and drawtext crashes looking up "Sans" there.
+    windows_font = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "arial.ttf"
+    if sys.platform == "win32" and windows_font.is_file():
+        return f"fontfile={_filter_path(windows_font)}"
+    return "font=Sans"
+
+
 def _hook_filter(text_file: Path, width: int, height: int, chars: int) -> str:
     # Roughly 0.6 em per character, so the line fits 90% of the width; never taller than 1/14 of the frame.
     size = max(12, int(min(height / 14, 0.9 * width / (0.6 * max(chars, 1)))))
     return (
-        f"drawtext=textfile={text_file}:expansion=none:font=Sans:fontcolor=white:fontsize={size}"
+        f"drawtext=textfile={_filter_path(text_file)}:expansion=none:{_hook_font()}:fontcolor=white:fontsize={size}"
         f":box=1:boxcolor=black@0.65:boxborderw={size // 2}:x=(w-text_w)/2:y=h*0.08"
         f":enable='lt(t,{HOOK_SECONDS})'"
     )

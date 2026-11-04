@@ -204,20 +204,39 @@ def api_list_clips():
     return library.list_clips()
 
 
+def _in_active_run(clip_id: str) -> bool:
+    return any(
+        r.input_clip_id == clip_id and r.status in (RunStatus.QUEUED, RunStatus.RUNNING) for r in library.list_runs()
+    )
+
+
+def _remove_clip(clip: Clip) -> None:
+    (CLIPS_DIR / clip.file_name).unlink(missing_ok=True)
+    library.delete_clip(clip.clip_id)
+
+
+@app.delete("/api/clips")
+def api_clear_clips():
+    """Delete every clip except the ones an active run is still reading."""
+    kept = 0
+    deleted = 0
+    for clip in library.list_clips():
+        if _in_active_run(clip.clip_id):
+            kept += 1
+            continue
+        _remove_clip(clip)
+        deleted += 1
+    return {"status": "cleared", "count": deleted, "kept": kept}
+
+
 @app.delete("/api/clips/{clip_id}")
 def api_delete_clip(clip_id: str):
     clip = library.get_clip(clip_id)
     if clip is None:
         raise HTTPException(status_code=404, detail="Clip not found")
-    active_runs = [
-        r for r in library.list_runs()
-        if r.input_clip_id == clip_id and r.status in (RunStatus.QUEUED, RunStatus.RUNNING)
-    ]
-    if active_runs:
+    if _in_active_run(clip_id):
         raise HTTPException(status_code=400, detail="Cannot delete a clip that is currently in an active pipeline run.")
-    clip_file = CLIPS_DIR / clip.file_name
-    clip_file.unlink(missing_ok=True)
-    library.delete_clip(clip_id)
+    _remove_clip(clip)
     return {"status": "deleted", "clip_id": clip_id}
 
 
@@ -283,6 +302,12 @@ def api_rerun(run_id: str, payload: RerunRequest):
     clip = library.get_clip(run.input_clip_id)
     if clip is None:
         raise HTTPException(status_code=404, detail="The input clip for this run is no longer in the library.")
+    # Running a finished run again replaces its output instead of adding a second clip of the same range.
+    previous = run.output_clip_id and library.get_clip(run.output_clip_id)
+    if previous:
+        if _in_active_run(previous.clip_id):
+            raise HTTPException(status_code=400, detail="This run's clip is being used by another run right now.")
+        _remove_clip(previous)
     run.reset()
     library.save_run(run)
     runner.submit(_execute, run.run_id, payload.ai)

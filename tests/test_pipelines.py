@@ -223,3 +223,44 @@ def test_restart_fails_runs_the_old_process_left_open(tmp_path):
     assert restarted.get_run("r2") == done
     assert restarted.get_clip("c1") == clip
     assert Library(path).list_runs() == restarted.list_runs()
+
+
+def test_rerun_of_a_finished_run_replaces_its_output_clip(fake_ai):
+    run = _finished(_send(_export()["clip_id"])["run_id"])
+    assert run["status"] == "done"
+    old_output = _clip(run["output_clip_id"])
+    clips_before = len(client.get("/api/clips").json())
+
+    fake_ai["draft"] = HookDraft(text="Marcus says we go all in", source_lines=[1])
+    assert client.post(f"/api/runs/{run['run_id']}/rerun", json={"ai": {"provider": "openai"}}).status_code == 200
+    again = _finished(run["run_id"])
+
+    assert again["status"] == "done" and again["input_clip_id"] == run["input_clip_id"]
+    assert again["output_clip_id"] != old_output["clip_id"]
+    clips = {c["clip_id"]: c for c in client.get("/api/clips").json()}
+    assert len(clips) == clips_before
+    assert old_output["clip_id"] not in clips
+    assert not (CLIPS_DIR / old_output["file_name"]).exists()
+    assert clips[again["output_clip_id"]]["hook"] == "Marcus says we go all in"
+
+
+def test_clear_clips_deletes_every_clip_not_used_by_an_active_run():
+    busy, idle = _export(), _export()
+    library = Library(DB_PATH)
+    active = Run(
+        run_id="clear_clips_active", pipeline="context-hook", input_clip_id=busy["clip_id"],
+        steps=[StepRecord(id="s1", label="Step 1", state=StepState.RUNNING)], created_at=time.time(),
+    )
+    library.add_run(active)
+    try:
+        res = client.delete("/api/clips")
+        assert res.status_code == 200
+        assert res.json()["kept"] == 1
+        assert [c["clip_id"] for c in client.get("/api/clips").json()] == [busy["clip_id"]]
+        assert not (CLIPS_DIR / idle["file_name"]).exists()
+        assert (CLIPS_DIR / busy["file_name"]).is_file()
+    finally:
+        library.delete_run(active.run_id)
+    assert client.delete("/api/clips").json()["kept"] == 0
+    assert client.get("/api/clips").json() == []
+    assert not (CLIPS_DIR / busy["file_name"]).exists()

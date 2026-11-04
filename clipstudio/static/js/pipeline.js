@@ -1,4 +1,4 @@
-import { clearRuns, createRun, deleteClip, deleteRun, getPipelines, listClips, listProviders, listRuns, rerunRun } from './api.js';
+import { clearClips, clearRuns, createRun, deleteClip, deleteRun, getPipelines, listClips, listProviders, listRuns, rerunRun } from './api.js';
 import { aiChoiceFromPrefs } from './ai-prefs.js';
 import { escapeHtml, renderNav, showMessage } from './ui.js';
 import { clipCard, clipName, onSend, setSendStatus, showActiveRunCount } from './widgets.js';
@@ -17,6 +17,7 @@ const clipsList = document.getElementById('clipsList');
 const aiChoiceNote = document.getElementById('aiChoice');
 const pageError = document.getElementById('pageError');
 const clearRunsBtn = document.getElementById('clearRunsBtn');
+const clearClipsBtn = document.getElementById('clearClipsBtn');
 
 let pipelines = [];
 const clips = new Map();
@@ -67,10 +68,10 @@ function runHtml(run) {
     <p class="run-input">From ${input ? escapeHtml(clipName(input)) : 'a clip'}</p>
     <ol class="run-steps">${run.steps.map(stepHtml).join('')}</ol>
     ${output ? clipCard(output, pipelines) : ''}
-    ${run.status === 'failed' ? `
+    ${canDelete ? `
       <div class="run-actions">
-        <button type="button" class="btn btn-sm" data-action="rerun"
-          data-run-id="${escapeHtml(run.run_id)}">Run again</button>
+        <button type="button" class="btn btn-sm" data-action="rerun" data-run-id="${escapeHtml(run.run_id)}"
+          data-replaces="${run.output_clip_id ? 'true' : ''}">${run.status === 'failed' ? 'Retry' : 'Run again'}</button>
         <p class="send-status" role="status"></p>
       </div>` : ''}`;
 }
@@ -119,6 +120,7 @@ function renderRuns(runs) {
 }
 
 function renderClips(list) {
+  clearClipsBtn.hidden = list.length === 0;
   renderKeyed(clipsList, clipCards, list, (clip) => clip.clip_id, () => document.createElement('div'),
     (clip) => clipCard(clip, pipelines), 'No clips yet. Export one in the Editor.');
 }
@@ -179,6 +181,7 @@ async function retryRun(runId, button, status) {
   try {
     await rerunRun(runId, { ai: aiChoiceFromPrefs() });
     setSendStatus(status, '');
+    await refreshClips();
     await refresh();
     focusRun(runId);
   } catch (err) {
@@ -206,7 +209,9 @@ onSend(document.body, ({ clipId, pipeline, button, status }) => startRun(clipId,
 
 runsList.addEventListener('click', (e) => {
   const button = e.target.closest('[data-action="rerun"]');
-  if (button) retryRun(button.dataset.runId, button, button.nextElementSibling);
+  if (!button) return;
+  if (button.dataset.replaces && !confirm('Run this again on the same clip? Its current result is replaced.')) return;
+  retryRun(button.dataset.runId, button, button.nextElementSibling);
 });
 
 document.body.addEventListener('click', async (e) => {
@@ -256,6 +261,22 @@ if (clearRunsBtn) {
     }
   });
 }
+
+clearClipsBtn.addEventListener('click', async () => {
+  if (!confirm('Permanently delete every clip? This removes the video files from disk and cannot be undone.')) return;
+  clearClipsBtn.disabled = true;
+  try {
+    const { kept } = await clearClips();
+    clips.clear();
+    await refreshClips();
+    await refresh();
+    showError(kept ? `Kept ${kept} ${kept === 1 ? 'clip' : 'clips'} that a run is still using.` : null);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    clearClipsBtn.disabled = false;
+  }
+});
 
 // Another tab may have exported or sent a clip while this one was not polling.
 document.addEventListener('visibilitychange', () => {
