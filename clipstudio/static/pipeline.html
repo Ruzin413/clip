@@ -34,7 +34,10 @@
 
     <aside class="sidebar">
       <section class="pane clips-pane" aria-labelledby="clipsHeading">
-        <h2 id="clipsHeading" class="pane-title">Clips</h2>
+        <div class="pane-head-title">
+          <h2 id="clipsHeading" class="pane-title">Clips</h2>
+          <button type="button" id="clearClipsBtn" class="btn btn-sm btn-danger" hidden>Delete all</button>
+        </div>
         <div id="clipsList" class="clip-list">
           <p class="empty">Loading clips…</p>
         </div>

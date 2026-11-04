@@ -82,6 +82,9 @@ export const listClips = () => getJson('/api/clips', 'Could not load the clips')
 export const deleteClip = (clipId) =>
   sendJson('DELETE', `/api/clips/${encodeURIComponent(clipId)}`, null, 'Could not delete this clip');
 
+/** Delete every clip that no active run is reading. @returns {Promise<{status: string, count: number, kept: number}>} */
+export const clearClips = () => sendJson('DELETE', '/api/clips', null, 'Could not delete the clips');
+
 /** @returns {Promise<Pipeline[]>} */
 export const getPipelines = () => getJson('/api/pipelines', 'Could not load the pipelines');
 
