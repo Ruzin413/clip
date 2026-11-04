@@ -3,14 +3,27 @@ import {
   downloadVideo, listProviders, listRuns, saveProviderSettings,
 } from './api.js';
 import { readAiPrefs, saveAiPrefs } from './ai-prefs.js';
+import { forgetWork, pageWasReloaded, readWork, saveWork } from './editor-work.js';
 import { countOf, escapeHtml, formatTime, renderNav, showMessage } from './ui.js';
 import { pipelineOptions, showActiveRunCount, trackRunUrl } from './widgets.js';
 
-let currentVideoId = null;
+/** @type {{url: string, videoId: string, streamUrl: string, title: string, platform: string, duration: number}|null} */
+let currentVideo = null;
 let videoDuration = 0;
 let clipStart = 0;
 let clipEnd = 0;
 let allCaptions = [];
+/** @type {'loading'|'ready'|'none'|'failed'|null} */
+let captionsState = null;
+let captionsError = '';
+let highlights = [];
+let answeredBy = null;
+let activeTab = 'highlights';
+// A restored range and pipeline choice wait here until the video's length and the pipeline list are known.
+let pendingRange = null;
+let pendingSendTo = null;
+// Bumped by every subtitle fetch and by Clear, so a late answer for an old video is dropped.
+let captionsRound = 0;
 
 const videoPlayer = document.getElementById('videoPlayer');
 const placeholderView = document.getElementById('placeholderView');
@@ -48,9 +61,14 @@ const aiForgetBtn = document.getElementById('aiForgetBtn');
 const aiAnswered = document.getElementById('aiAnswered');
 const loadError = document.getElementById('loadError');
 const sendToSelect = document.getElementById('sendToSelect');
+const clearBtn = document.getElementById('clearBtn');
+const videoMetaHeader = document.getElementById('videoMetaHeader');
+const videoDurationDisplay = document.getElementById('videoDurationDisplay');
 
 const PLATFORM_LABELS = { youtube: 'YouTube', twitch: 'Twitch', kick: 'Kick' };
 const NO_SUBTITLES = 'This video has no subtitles, so the AI cannot search it. You can still trim the range by hand.';
+const NO_VIDEO_MOMENTS = 'Load a video to find moments worth clipping.';
+const NO_VIDEO_TRANSCRIPT = 'The transcript appears here after you load a video.';
 
 let aiProviders = new Map();
 let aiAuto = null;
@@ -60,6 +78,7 @@ let runCountTimer = null;
 let runCountRound = 0;
 
 function switchTab(tab) {
+  activeTab = tab;
   for (const panel of document.querySelectorAll('[data-tab-panel]')) panel.hidden = panel.dataset.tabPanel !== tab;
   for (const btn of document.querySelectorAll('[data-tab]')) btn.classList.toggle('active', btn.dataset.tab === tab);
 }
@@ -89,42 +108,159 @@ async function loadVideo() {
 
   try {
     const info = await getVideoInfo(url);
-    currentVideoId = info.video_id;
-    exportBtn.disabled = true;
+    // A new link replaces everything the editor held for the last one.
+    resetWork();
+    forgetWork();
     showMessage(captionsList, 'Fetching subtitles…');
     showMessage(highlightsList, 'Fetching subtitles…');
     videoDuration = info.duration || 100;
-    allCaptions = [];
-    aiAnswered.hidden = true;
-    updateCaptionControls();
-
-    document.getElementById('videoMetaHeader').hidden = false;
-    document.getElementById('videoTitleDisplay').textContent = info.title;
-    document.getElementById('videoPlatformDisplay').textContent = PLATFORM_LABELS[info.platform] || info.platform || '';
-    document.getElementById('videoDurationDisplay').textContent = info.duration ? formatTime(info.duration) : '';
+    showVideoMeta(info.title, info.platform, info.duration);
 
     setStatus('Downloading video…', true);
     const dlData = await downloadVideo(url);
-
-    placeholderView.hidden = true;
-    videoPlayer.hidden = false;
-    videoPlayer.src = dlData.stream_url;
-    videoPlayer.load();
-
-    videoPlayer.onloadedmetadata = () => {
-      videoDuration = videoPlayer.duration || videoDuration;
-      document.getElementById('videoDurationDisplay').textContent = formatTime(videoDuration);
-      initSliders();
-      exportBtn.disabled = false;
+    currentVideo = {
+      url, videoId: info.video_id, streamUrl: dlData.stream_url,
+      title: info.title, platform: info.platform, duration: info.duration,
     };
-
-    fetchCaptions();
+    showVideo(currentVideo);
+    rememberWork();
+    fetchCaptions(url);
   } catch (err) {
     console.error(err);
     setStatus('Link not loaded');
     showLoadError(err.message);
   } finally {
     loadBtn.disabled = false;
+  }
+}
+
+function showVideoMeta(title, platform, duration) {
+  videoMetaHeader.hidden = false;
+  document.getElementById('videoTitleDisplay').textContent = title;
+  document.getElementById('videoPlatformDisplay').textContent = PLATFORM_LABELS[platform] || platform || '';
+  videoDurationDisplay.textContent = duration ? formatTime(duration) : '';
+}
+
+function showVideo(video, restoring = false) {
+  showVideoMeta(video.title, video.platform, video.duration);
+  placeholderView.hidden = true;
+  videoPlayer.hidden = false;
+  videoPlayer.onerror = restoring ? () => {
+    if (currentVideo !== video) return;
+    resetWork();
+    forgetWork();
+    setStatus('Link not loaded');
+    showLoadError('The saved video is no longer on the server. Choose Load video to fetch it again.');
+  } : null;
+  videoPlayer.src = video.streamUrl;
+  videoPlayer.load();
+
+  videoPlayer.onloadedmetadata = () => {
+    videoDuration = videoPlayer.duration || videoDuration;
+    videoDurationDisplay.textContent = formatTime(videoDuration);
+    initSliders();
+    if (pendingRange) {
+      setRange(pendingRange.start, pendingRange.end);
+      videoPlayer.currentTime = Math.min(pendingRange.playhead ?? pendingRange.start, videoDuration);
+      pendingRange = null;
+    }
+    exportBtn.disabled = false;
+  };
+}
+
+/** Empty the editor: no video, subtitles, moments or range. The link box and the AI settings stay as they are. */
+function resetWork() {
+  currentVideo = null;
+  captionsRound++;
+  allCaptions = [];
+  captionsState = null;
+  captionsError = '';
+  highlights = [];
+  answeredBy = null;
+  pendingRange = null;
+  videoPlayer.pause();
+  videoPlayer.onloadedmetadata = null;
+  videoPlayer.onerror = null;
+  videoPlayer.removeAttribute('src');
+  videoPlayer.load();
+  videoPlayer.hidden = true;
+  placeholderView.hidden = false;
+  videoMetaHeader.hidden = true;
+  exportBtn.disabled = true;
+  aiAnswered.hidden = true;
+  searchCaptionsInput.value = '';
+  videoDuration = 100;
+  startSlider.value = 0;
+  endSlider.value = 0;
+  clipStart = 0;
+  clipEnd = 0;
+  renderRange();
+  showMessage(highlightsList, NO_VIDEO_MOMENTS);
+  showMessage(captionsList, NO_VIDEO_TRANSCRIPT);
+  updateCaptionControls();
+}
+
+function clearEditor() {
+  resetWork();
+  forgetWork();
+  urlInput.value = '';
+  aiQueryInput.value = '';
+  showLoadError(null);
+  setStatus('Ready');
+}
+
+function rememberWork() {
+  const range = pendingRange || (currentVideo && videoPlayer.readyState >= HTMLMediaElement.HAVE_METADATA
+    ? { start: clipStart, end: clipEnd, playhead: videoPlayer.currentTime } : null);
+  const work = {
+    url: urlInput.value,
+    video: currentVideo,
+    range,
+    captions: allCaptions,
+    captionsState,
+    captionsError,
+    highlights,
+    answeredBy,
+    query: aiQueryInput.value,
+    search: searchCaptionsInput.value,
+    tab: activeTab,
+    sendTo: pendingSendTo ?? sendToSelect.value,
+  };
+  // Hours of subtitles can be too big to store. Keep the rest and fetch the subtitles again on return.
+  if (!saveWork(work)) saveWork({ ...work, captions: [], captionsState: 'loading', highlights: [], answeredBy: null });
+}
+
+function restoreWork() {
+  if (pageWasReloaded()) {
+    forgetWork();
+    return;
+  }
+  const work = readWork();
+  if (!work) return;
+  urlInput.value = work.url || '';
+  aiQueryInput.value = work.query || '';
+  pendingSendTo = work.sendTo || null;
+  switchTab(work.tab === 'captions' ? 'captions' : 'highlights');
+  if (!work.video) {
+    if (work.url) setStatus('Choose Load video to continue');
+    return;
+  }
+
+  currentVideo = work.video;
+  videoDuration = currentVideo.duration || 100;
+  allCaptions = work.captions || [];
+  captionsState = work.captionsState || 'loading';
+  captionsError = work.captionsError || '';
+  highlights = work.highlights || [];
+  answeredBy = work.answeredBy || null;
+  pendingRange = work.range || null;
+  searchCaptionsInput.value = work.search || '';
+  showVideo(currentVideo, true);
+  if (captionsState === 'loading') {
+    fetchCaptions(currentVideo.url);
+  } else {
+    showCaptionsState();
+    setStatus('Picked up where you left off');
   }
 }
 
@@ -136,6 +272,15 @@ function initSliders() {
   clipStart = 0;
   clipEnd = parseFloat(endSlider.value);
   updateTimelineUI();
+}
+
+function setRange(start, end) {
+  startSlider.value = start;
+  endSlider.value = end;
+  // Sliders snap to their 0.1s step; the AI's timestamps must reach export unrounded.
+  clipStart = start;
+  clipEnd = end;
+  renderRange();
 }
 
 function updateTimelineUI() {
@@ -222,32 +367,57 @@ resetRangeBtn.addEventListener('click', () => {
   initSliders();
 });
 
-async function fetchCaptions() {
-  const url = urlInput.value.trim();
+async function fetchCaptions(url = urlInput.value.trim()) {
   if (!url) return;
 
+  const round = ++captionsRound;
   setStatus('Fetching subtitles…', true);
+  captionsState = 'loading';
+  highlights = [];
+  answeredBy = null;
   try {
     const data = await getCaptions(url);
+    if (round !== captionsRound) return;
     allCaptions = data.captions || [];
-    updateCaptionControls();
-    if (allCaptions.length === 0) {
-      showMessage(captionsList, NO_SUBTITLES);
-      showMessage(highlightsList, NO_SUBTITLES);
-      setStatus('No subtitles for this video');
-      return;
-    }
-    renderCaptions(allCaptions);
-    showMessage(highlightsList, `${countOf(allCaptions.length, 'subtitle line')} ready. Say what to look for, or leave it blank, and choose Find moments.`);
-    setStatus(`Loaded ${countOf(allCaptions.length, 'subtitle line')}`);
+    captionsState = allCaptions.length ? 'ready' : 'none';
+    setStatus(allCaptions.length ? `Loaded ${countOf(allCaptions.length, 'subtitle line')}` : 'No subtitles for this video');
   } catch (err) {
+    if (round !== captionsRound) return;
     console.warn('Subtitles unavailable:', err);
     allCaptions = [];
-    updateCaptionControls();
-    showMessage(captionsList, `Subtitles could not be loaded. ${err.message}`, true);
-    showMessage(highlightsList, 'Finding moments needs subtitles. You can still trim the range by hand.');
+    captionsState = 'failed';
+    captionsError = err.message;
     setStatus('Subtitles failed');
   }
+  showCaptionsState();
+  rememberWork();
+}
+
+/** Draw the transcript and moments panels from the subtitles and moments the editor holds. */
+function showCaptionsState() {
+  updateCaptionControls();
+  aiAnswered.hidden = true;
+  if (captionsState === 'ready') {
+    renderCaptions(filteredCaptions());
+    if (answeredBy) {
+      renderHighlights(highlights);
+      aiAnswered.textContent = `Answered by ${providerLabel(answeredBy)}`;
+      aiAnswered.hidden = false;
+    } else {
+      showMessage(highlightsList, `${countOf(allCaptions.length, 'subtitle line')} ready. Say what to look for, or leave it blank, and choose Find moments.`);
+    }
+  } else if (captionsState === 'none') {
+    showMessage(captionsList, NO_SUBTITLES);
+    showMessage(highlightsList, NO_SUBTITLES);
+  } else if (captionsState === 'failed') {
+    showMessage(captionsList, `Subtitles could not be loaded. ${captionsError}`, true);
+    showMessage(highlightsList, 'Finding moments needs subtitles. You can still trim the range by hand.');
+  }
+}
+
+function filteredCaptions() {
+  const term = searchCaptionsInput.value.toLowerCase();
+  return term ? allCaptions.filter((s) => s.text.toLowerCase().includes(term)) : allCaptions;
 }
 
 function renderCaptions(segments) {
@@ -273,11 +443,7 @@ captionsList.addEventListener('click', (e) => {
   if (line) seekVideo(parseFloat(line.dataset.seek));
 });
 
-searchCaptionsInput.addEventListener('input', (e) => {
-  const term = e.target.value.toLowerCase();
-  const filtered = allCaptions.filter(s => s.text.toLowerCase().includes(term));
-  renderCaptions(filtered);
-});
+searchCaptionsInput.addEventListener('input', () => renderCaptions(filteredCaptions()));
 
 async function triggerAiHighlights() {
   if (allCaptions.length === 0) return;
@@ -290,11 +456,11 @@ async function triggerAiHighlights() {
   try {
     await rememberAiSettings();
     const data = await findHighlights(aiRequestBody());
-    const highlights = data.highlights || [];
-    renderHighlights(highlights);
-    aiAnswered.textContent = `Answered by ${providerLabel(data.provider)}`;
-    aiAnswered.hidden = false;
+    highlights = data.highlights || [];
+    answeredBy = data.provider;
+    showCaptionsState();
     setStatus(`Found ${countOf(highlights.length, 'moment')}`);
+    rememberWork();
   } catch (err) {
     console.error(err);
     showMessage(highlightsList, err.message, true);
@@ -321,11 +487,12 @@ function aiRequestBody() {
 
 function updateCaptionControls() {
   aiAnalyzeBtn.disabled = allCaptions.length === 0;
-  const chosen = sendToSelect.value;
+  const chosen = pendingSendTo ?? sendToSelect.value;
   sendToSelect.innerHTML = '<option value="">Nothing, just download</option>'
     + pipelineOptions(pipelines, allCaptions.length > 0);
   const stillOpen = [...sendToSelect.options].some((o) => o.value === chosen && !o.disabled);
   sendToSelect.value = stillOpen ? chosen : '';
+  if (pipelines.length && captionsState !== 'loading') pendingSendTo = null;
 }
 
 async function loadPipelines() {
@@ -365,6 +532,7 @@ function applyAiProviders(data) {
   const selected = aiProviderSelect.value === 'auto' ? aiPrefs.provider : aiProviderSelect.value;
   aiProviders = new Map(data.providers.map(p => [p.id, p]));
   aiAuto = data.auto;
+  if (answeredBy && captionsState === 'ready') aiAnswered.textContent = `Answered by ${providerLabel(answeredBy)}`;
   aiProviderSelect.replaceChildren(new Option(aiAuto ? `Automatic (${providerLabel(aiAuto)})` : 'Automatic', 'auto'));
   for (const p of aiProviders.values()) aiProviderSelect.add(new Option(p.label, p.id));
   if (aiProviders.has(selected)) aiProviderSelect.value = selected;
@@ -475,25 +643,20 @@ highlightsList.addEventListener('click', (e) => {
 });
 
 function applyClipRange(start, end) {
-  startSlider.value = start;
-  endSlider.value = end;
-  // Sliders snap to their 0.1s step; the AI's timestamps must reach export unrounded.
-  clipStart = start;
-  clipEnd = end;
-  renderRange();
+  setRange(start, end);
   videoPlayer.currentTime = start;
   videoPlayer.play();
 }
 
 async function exportClip() {
-  if (!currentVideoId) {
+  if (!currentVideo) {
     alert('Load a video before exporting.');
     return;
   }
 
   const pipeline = pipelines.find((p) => p.id === sendToSelect.value);
   exportBtn.disabled = true;
-  const body = { video_id: currentVideoId, start_time: clipStart, end_time: clipEnd, captions: allCaptions };
+  const body = { video_id: currentVideo.videoId, start_time: clipStart, end_time: clipEnd, captions: allCaptions };
   setStatus('Exporting clip…', true);
 
   let clip;
@@ -553,7 +716,13 @@ function showLoadError(text) {
 }
 
 loadBtn.addEventListener('click', loadVideo);
-fetchCcTopBtn.addEventListener('click', fetchCaptions);
+fetchCcTopBtn.addEventListener('click', () => fetchCaptions(currentVideo?.url));
+clearBtn.addEventListener('click', clearEditor);
+// Leaving for another page, or the tab going to the background, saves the work so it is here on return.
+window.addEventListener('pagehide', rememberWork);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) rememberWork();
+});
 aiAnalyzeBtn.addEventListener('click', triggerAiHighlights);
 exportBtn.addEventListener('click', exportClip);
 
@@ -562,6 +731,7 @@ urlInput.addEventListener('keydown', (e) => {
 });
 
 renderNav();
+restoreWork();
 loadAiProviders();
 loadPipelines();
 watchRunCount();

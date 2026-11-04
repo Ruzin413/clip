@@ -19,7 +19,7 @@ App code lives in the `clipstudio/` package, tests in `tests/`, and runtime data
 - `app.py` holds the HTTP routes and the single pipeline worker, so one ffmpeg runs at a time. `models.py` holds the shared shapes. A run's `status` is derived from its steps, never stored. The frontend in `clipstudio/static/` is static files with no build step. Two pages: the editor (`index.html`, entry `js/editor.js`) and the Pipeline page (`pipeline.html`, entry `js/pipeline.js`), which tracks runs and lists the clip library.
   - Each page's HTML is markup only: no `<style>`, no `style=`, no inline script, no `on*=` handlers. `tests/test_static.py` enforces this.
   - `css/app.css` holds the design tokens and shared components. `css/<page>.css` holds rules only one page uses.
-  - `js/api.js` holds one function per endpoint. `js/ui.js` holds `PAGES`, which renders the nav into each page's `<nav data-nav>`, plus the formatting helpers. `js/ai-prefs.js` reads the editor's remembered AI choice. `js/widgets.js` renders the clip card and the "Send to" control, once for every page.
+  - `js/api.js` holds one function per endpoint. `js/ui.js` holds `PAGES`, which renders the nav into each page's `<nav data-nav>`, plus the formatting helpers. `js/ai-prefs.js` reads the editor's remembered AI choice. `js/editor-work.js` keeps the editor's loaded video, subtitles, moments and range in `localStorage`, so changing pages keeps them; Clear, a reload or a new link drops them. `js/widgets.js` renders the clip card and the "Send to" control, once for every page.
 
 ## Run and test
 
